@@ -43,7 +43,7 @@ Then, depending on your usecase, build only the library or any of the tools:
 ### Building the example
 After creating and building necessarry libraries, go to build directory and run
 
-```
+```bash
 g++ ./CMakeFiles/example_compression.dir/tools/examples/compression.cpp.o \
                                             -L./ -lbtrblocks \
                                             -L./vendor/croaring/src/croaring_src-build -lroaring \
@@ -51,6 +51,27 @@ g++ ./CMakeFiles/example_compression.dir/tools/examples/compression.cpp.o \
                                             -L./vendor/cwida/fsst/src/fsst_src-build -lfsst \
                                             -Wl,-rpath=./vendor/croaring/src/croaring_src-build \
                                             -o compression_example_executable
+```
+
+### Running the csvtobtr and btrtocsv binaries
+Example usage;
+```bash
+./csvtobtr -create_btr -csv <path to csv file> -yaml <path to yaml file> -binary binary/ -create_binary
+
+./btrtocsv -btr btr/ -csv output.csv
+```
+
+The yaml file should represent the csv columns and data types, e.g.;
+```yaml
+columns:
+  - name: Index
+    type: integer
+    
+  - name: Customer Id
+    type: string
+
+  - name: Rating
+    type: double
 ```
 
 For a list of all valid targets, run `make help`.
