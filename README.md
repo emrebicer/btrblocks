@@ -38,6 +38,21 @@ Then, depending on your usecase, build only the library or any of the tools:
 - build the in-memory decompression speed benchmark: `make decompression_speed`
 - ...
 
+
+
+### Building the example
+After creating and building necessarry libraries, go to build directory and run
+
+```
+g++ ./CMakeFiles/example_compression.dir/tools/examples/compression.cpp.o \
+                                            -L./ -lbtrblocks \
+                                            -L./vendor/croaring/src/croaring_src-build -lroaring \
+                                            -L./vendor/lemire/fastpfor/src/fastpfor_src-build/ -lFastPFOR \
+                                            -L./vendor/cwida/fsst/src/fsst_src-build -lfsst \
+                                            -Wl,-rpath=./vendor/croaring/src/croaring_src-build \
+                                            -o compression_example_executable
+```
+
 For a list of all valid targets, run `make help`.
 
 Library was built and tested on Linux (x86, ARM) and MacOS (ARM).
