@@ -13,13 +13,14 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in {
 
-        devShells.${system}.default = pkgs.mkShell {
+        devShells.${system}.default = pkgs.mkShellNoCC {
           buildInputs = with pkgs; [
             (pkgs.python3.withPackages (python-pkgs: with python-pkgs; [
               pandas
               numpy
             ]))
               python311Packages.cmake
+              gcc9
               gnumake
               zlib
               openssl_legacy
@@ -29,7 +30,7 @@
               yaml-cpp
               spdlog
               tbb
-              nix-ld
+              boost
           ];
         };
 
