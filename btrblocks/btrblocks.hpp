@@ -20,9 +20,7 @@ namespace btrblocks {
 enum class SchemeSelection : uint8_t { SAMPLE, TRY_ALL };
 // ------------------------------------------------------------------------------
 
-extern "C" {
-    void emretestfunc();
-}
+void emretestfunc();
 
 struct BtrBlocksConfig {
   // clang-format off
