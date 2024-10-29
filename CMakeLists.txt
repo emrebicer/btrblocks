@@ -53,30 +53,30 @@ include("${CMAKE_VENDOR_DIR}/croaring.cmake")
 include("${CMAKE_VENDOR_DIR}/dynamic_bitset.cmake")
 
 # TODO(open-sourcing) dependencies I'd like to remove from the core library
-include("${CMAKE_VENDOR_DIR}/tbb.cmake")
-include("${CMAKE_VENDOR_DIR}/gflags.cmake")
-include("${CMAKE_VENDOR_DIR}/spdlog.cmake")
-include("${CMAKE_VENDOR_DIR}/yaml-cpp.cmake")
-include("${CMAKE_VENDOR_DIR}/csv-parser.cmake")
+# include("${CMAKE_VENDOR_DIR}/tbb.cmake")
+# include("${CMAKE_VENDOR_DIR}/gflags.cmake")
+# include("${CMAKE_VENDOR_DIR}/spdlog.cmake")
+# include("${CMAKE_VENDOR_DIR}/yaml-cpp.cmake")
+# include("${CMAKE_VENDOR_DIR}/csv-parser.cmake")
 
 # Test dependencies
-include("${CMAKE_VENDOR_DIR}/googletest.cmake")
+# include("${CMAKE_VENDOR_DIR}/googletest.cmake")
 
 # Benchmark dependencies
-include("${CMAKE_VENDOR_DIR}/aws-sdk.cmake")
-include("${CMAKE_VENDOR_DIR}/benchmark.cmake")
-include("${CMAKE_VENDOR_DIR}/gdouble.cmake")
-include("${CMAKE_VENDOR_DIR}/lz4.cmake")
+# include("${CMAKE_VENDOR_DIR}/aws-sdk.cmake")
+# include("${CMAKE_VENDOR_DIR}/benchmark.cmake")
+# include("${CMAKE_VENDOR_DIR}/gdouble.cmake")
+# include("${CMAKE_VENDOR_DIR}/lz4.cmake")
 
 # ---------------------------------------------------------------------------
 # Components
 # ---------------------------------------------------------------------------
 
 include("${CMAKE_SOURCE_DIR}/btrblocks/local.cmake")  # btrblocks library
-include("${CMAKE_SOURCE_DIR}/btrfiles/local.cmake")   # btrblocks files library
-include("${CMAKE_SOURCE_DIR}/test/local.cmake")       # btrblocks tests
-include("${CMAKE_SOURCE_DIR}/bench/local.cmake")      # btrblocks tests
-include("${CMAKE_SOURCE_DIR}/tools/local.cmake")      # btrblocks tooling
+# include("${CMAKE_SOURCE_DIR}/btrfiles/local.cmake")   # btrblocks files library
+# include("${CMAKE_SOURCE_DIR}/test/local.cmake")       # btrblocks tests
+# include("${CMAKE_SOURCE_DIR}/bench/local.cmake")      # btrblocks tests
+# include("${CMAKE_SOURCE_DIR}/tools/local.cmake")      # btrblocks tooling
 
 # ---------------------------------------------------------------------------
 # Linting
