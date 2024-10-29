@@ -9,6 +9,9 @@ void BtrBlocksConfig::configure(const std::function<void(BtrBlocksConfig&)>& f) 
   f(instance);
   SchemePool::refresh();
 }
+void emretestfunc() {
+  cout << "This is emre's test func" << endl;
+}
 
 }  // namespace btrblocks
 // ------------------------------------------------------------------------------
