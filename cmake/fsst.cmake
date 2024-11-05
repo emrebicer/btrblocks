@@ -24,7 +24,11 @@ ExternalProject_Add(
         CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/vendor/fsst
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+        -DCMAKE_CXX_FLAGS="-fPIE"
+        -DCMAKE_C_FLAGS="-fPIE"
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
 
 ExternalProject_Get_Property(fsst_src source_dir)
