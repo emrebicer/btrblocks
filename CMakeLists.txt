@@ -20,11 +20,14 @@ option(BUILD_SHARED_LIBRARY "BUILD_SHARED_LIBRARY" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -g")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -g -fPIE")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g -fPIE")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fPIE")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g -fPIE")
 add_compile_options(-march=native -Wall -Wextra)
+
+# Enable position-independent code globally
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -76,7 +79,7 @@ include("${CMAKE_SOURCE_DIR}/btrblocks/local.cmake")  # btrblocks library
 # include("${CMAKE_SOURCE_DIR}/btrfiles/local.cmake")   # btrblocks files library
 # include("${CMAKE_SOURCE_DIR}/test/local.cmake")       # btrblocks tests
 # include("${CMAKE_SOURCE_DIR}/bench/local.cmake")      # btrblocks tests
-# include("${CMAKE_SOURCE_DIR}/tools/local.cmake")      # btrblocks tooling
+include("${CMAKE_SOURCE_DIR}/tools/local.cmake")      # btrblocks tooling
 
 # ---------------------------------------------------------------------------
 # Linting
