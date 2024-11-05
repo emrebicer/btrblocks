@@ -20,7 +20,7 @@ namespace btrblocks {
 enum class SchemeSelection : uint8_t { SAMPLE, TRY_ALL };
 // ------------------------------------------------------------------------------
 
-void emretestfunc();
+void emretestfunc(int32_t value);
 
 void configure_btrblocks(uint8_t max_depth);
 

@@ -13,7 +13,7 @@ void BtrBlocksConfig::configure(const std::function<void(BtrBlocksConfig&)>& f) 
 
 void configure_btrblocks(uint8_t max_depth) {
     BtrBlocksConfig::configure([&](BtrBlocksConfig &config){
-        std::cout << "setting max cascade depth to " << max_depth << std::endl;
+        std::cout << "setting max cascade depth to (" << max_depth  << ")" << std::endl;
         config.integers.max_cascade_depth = max_depth;
         config.doubles.max_cascade_depth = max_depth;
         config.strings.max_cascade_depth = max_depth;
@@ -22,8 +22,8 @@ void configure_btrblocks(uint8_t max_depth) {
 }
 
 
-void emretestfunc() {
-  cout << "This is emre's test func" << endl;
+void emretestfunc(int32_t value) {
+  cout << "This is emre's test func, value is:"<< value << endl;
 }
 
 }  // namespace btrblocks
