@@ -31,7 +31,12 @@
               spdlog
               tbb
               boost
+              pkg-config
+              openssl
+              llvmPackages_latest.libclang
           ];
+
+          LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
         };
 
     };
