@@ -19,11 +19,6 @@ namespace btrblocks {
 // ------------------------------------------------------------------------------
 enum class SchemeSelection : uint8_t { SAMPLE, TRY_ALL };
 // ------------------------------------------------------------------------------
-
-void emretestfunc(int32_t value);
-
-void configure_btrblocks(uint32_t max_depth);
-
 struct BtrBlocksConfig {
   // clang-format off
   size_t block_size{65536};                            // max tuples in a single block
