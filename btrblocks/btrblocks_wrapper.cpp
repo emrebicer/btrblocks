@@ -2,22 +2,10 @@
 #include "btrblocks_wrapper.hpp"
 #include "btrblocks.hpp"
 #include "common/Log.hpp"
+#include "cxx.h"
 // ------------------------------------------------------------------------------
 namespace btrblocksWrapper {
 using namespace btrblocks;
-
-template <typename T>
-btrblocks::Vector<T> generateData(size_t size, size_t unique, size_t runlength, int seed = 42) {
-  btrblocks::Vector<T> data(size);
-  std::mt19937 gen(seed);
-  for (auto i = 0u; i < size - runlength; ++i) {
-    auto number = static_cast<T>(gen() % unique);
-    for (auto j = 0u; j != runlength; ++j, ++i) {
-      data[i] = number;
-    }
-  }
-  return data;
-}
 
 template <typename T>
 bool validateData(size_t size, T* input, T* output) {
@@ -66,6 +54,36 @@ Buffer* new_buffer(size_t size) {
   return new Buffer(size);
 }
 
+btrblocksWrapper::IntMMapVector::IntMMapVector(Vector<int32_t>* vec) {
+  data = vec;
+}
+
+IntMMapVector* new_int_mmapvector(const rust::Vec<int32_t>& vec) {
+  size_t size = vec.size();
+  auto* data = new Vector<int32_t>(size);
+
+  for (size_t i = 0; i < size; ++i) {
+    (*data)[i] = vec[i];
+  }
+
+  return new IntMMapVector(data);
+}
+
+btrblocksWrapper::DoubleMMapVector::DoubleMMapVector(Vector<double>* vec) {
+  data = vec;
+}
+
+DoubleMMapVector* new_double_mmapvector(const rust::Vec<double>& vec) {
+  size_t size = vec.size();
+  auto* data = new Vector<double>(size);
+
+  for (size_t i = 0; i < size; ++i) {
+    (*data)[i] = vec[i];
+  }
+
+  return new DoubleMMapVector(data);
+}
+
 void configure_btrblocks(uint32_t max_depth) {
   BtrBlocksConfig::configure([&](BtrBlocksConfig& config) {
     config.integers.max_cascade_depth = max_depth;
@@ -84,20 +102,18 @@ Relation* new_relation() {
   return new Relation();
 }
 
-void relation_add_column_int_random(Relation* relation,
-                                    uint32_t size,
-                                    uint32_t unique,
-                                    uint32_t runlength,
-                                    int32_t seed) {
-  relation->addColumn({"ints", generateData<int32_t>(size, unique, runlength, 42)});
+void relation_add_column_int(Relation* relation,
+                             const rust::String& column_name,
+                             IntMMapVector* btr_vec) {
+  Column column(column_name.data(), std::move(*btr_vec->data));
+  relation->addColumn(std::move(column));
 }
 
-void relation_add_column_double_random(Relation* relation,
-                                       uint32_t size,
-                                       uint32_t unique,
-                                       uint32_t runlength,
-                                       int32_t seed) {
-  relation->addColumn({"dbls", generateData<double>(size, unique, runlength, 42)});
+void relation_add_column_double(Relation* relation,
+                                const rust::String& column_name,
+                                DoubleMMapVector* btr_vec) {
+  Column column(column_name.data(), std::move(*btr_vec->data));
+  relation->addColumn(std::move(column));
 }
 
 uint64_t relation_get_tuple_count(Relation* relation) {
@@ -109,7 +125,7 @@ uint64_t chunk_get_tuple_count(Chunk* chunk) {
 }
 
 size_t chunk_size_bytes(Chunk* chunk) {
-  return chunk -> size_bytes();
+  return chunk->size_bytes();
 }
 
 Chunk* relation_get_chunk(Relation* relation,
@@ -127,10 +143,6 @@ Datablock* new_datablock(Relation* relation) {
 OutputBlockStats* datablock_compress(Datablock* datablock, Chunk* chunk, Buffer* buffer) {
   auto stats = datablock->compress(*chunk, buffer->data);
   return new OutputBlockStats(stats);
-  /*std::cout << "Stats:" << std::endl*/
-  /*          << "- input size " << chunk->size_bytes() << std::endl*/
-  /*          << "- output size " << stats.total_data_size << std::endl*/
-  /*          << "- compression ratio " << stats.compression_ratio << std::endl;*/
 }
 
 Chunk* datablock_decompress(Datablock* datablock, Buffer* buffer) {
