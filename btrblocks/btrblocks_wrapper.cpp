@@ -129,11 +129,13 @@ size_t chunk_size_bytes(Chunk* chunk) {
 }
 
 Chunk* relation_get_chunk(Relation* relation,
-                          uint64_t range_start,
-                          uint64_t range_end,
+                          const rust::Vec<uint64_t>& ranges,
                           size_t size) {
-  Range range(range_start, range_end);
-  return new Chunk(relation->getChunk({range}, size));
+  std::vector<Range> std_vec_ranges;
+  for (size_t i = 0; i < ranges.size(); i+=2) {
+    std_vec_ranges.push_back({Range(ranges.at(i), ranges.at(i + 1))});
+  }
+  return new Chunk(relation->getChunk(std_vec_ranges, size));
 }
 
 Datablock* new_datablock(Relation* relation) {

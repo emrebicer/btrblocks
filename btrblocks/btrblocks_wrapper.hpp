@@ -49,8 +49,7 @@ void relation_add_column_double(Relation* relation,
                                 DoubleMMapVector* btr_vec);
 uint64_t relation_get_tuple_count(Relation* relation);
 Chunk* relation_get_chunk(Relation* relation,
-                          uint64_t range_start,
-                          uint64_t range_end,
+                          const rust::Vec<uint64_t>& ranges,
                           size_t size);
 
 // Chunk
