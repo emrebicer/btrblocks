@@ -48,9 +48,7 @@ void relation_add_column_double(Relation* relation,
                                 const rust::String& column_name,
                                 DoubleMMapVector* btr_vec);
 uint64_t relation_get_tuple_count(Relation* relation);
-Chunk* relation_get_chunk(Relation* relation,
-                          const rust::Vec<uint64_t>& ranges,
-                          size_t size);
+Chunk* relation_get_chunk(Relation* relation, const rust::Vec<uint64_t>& ranges, size_t size);
 
 // Chunk
 uint64_t chunk_get_tuple_count(Chunk* chunk);
@@ -64,6 +62,9 @@ Chunk* datablock_decompress(Datablock* datablock, Buffer* buffer);
 // OutputBlockStats
 size_t stats_total_data_size(btrblocks::OutputBlockStats* stats);
 double stats_compression_ratio(btrblocks::OutputBlockStats* stats);
+
+// FileMetadata
+rust::Vec<uint32_t> get_file_metadata(const rust::String& btr_dir_path);
 
 }  // namespace btrblocksWrapper
 

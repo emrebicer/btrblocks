@@ -2,7 +2,9 @@
 #include "btrblocks_wrapper.hpp"
 #include "btrblocks.hpp"
 #include "common/Log.hpp"
+#include "common/Utils.hpp"
 #include "cxx.h"
+#include <filesystem>
 // ------------------------------------------------------------------------------
 namespace btrblocksWrapper {
 using namespace btrblocks;
@@ -128,11 +130,9 @@ size_t chunk_size_bytes(Chunk* chunk) {
   return chunk->size_bytes();
 }
 
-Chunk* relation_get_chunk(Relation* relation,
-                          const rust::Vec<uint64_t>& ranges,
-                          size_t size) {
+Chunk* relation_get_chunk(Relation* relation, const rust::Vec<uint64_t>& ranges, size_t size) {
   std::vector<Range> std_vec_ranges;
-  for (size_t i = 0; i < ranges.size(); i+=2) {
+  for (size_t i = 0; i < ranges.size(); i += 2) {
     std_vec_ranges.push_back({Range(ranges.at(i), ranges.at(i + 1))});
   }
   return new Chunk(relation->getChunk(std_vec_ranges, size));
@@ -156,6 +156,28 @@ size_t stats_total_data_size(btrblocks::OutputBlockStats* stats) {
 }
 double stats_compression_ratio(btrblocks::OutputBlockStats* stats) {
   return stats->compression_ratio;
+}
+
+// FileMetadata
+rust::Vec<uint32_t> get_file_metadata(const rust::String& metadata_path) {
+  std::vector<char> raw_file_metadata;
+  FileMetadata* file_metadata;
+
+  std::filesystem::path fs_path = metadata_path.data();
+  Utils::readFileToMemory(fs_path, raw_file_metadata);
+  file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
+
+  rust::Vec<u32> v;
+  v.push_back(file_metadata->num_columns);
+  v.push_back(file_metadata->num_chunks);
+
+  for (size_t i = 0; i < file_metadata->num_columns; i++) {
+    const ColumnPartInfo& part = file_metadata->parts[i];
+    v.push_back(static_cast<uint32_t>(part.type));
+    v.push_back(part.num_parts);
+  }
+
+  return v;
 }
 
 }  // namespace btrblocksWrapper
