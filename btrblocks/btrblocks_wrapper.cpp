@@ -159,12 +159,11 @@ double stats_compression_ratio(btrblocks::OutputBlockStats* stats) {
 }
 
 // FileMetadata
-rust::Vec<uint32_t> get_file_metadata(const rust::String& metadata_path) {
+rust::Vec<uint32_t> get_file_metadata(rust::String metadata_path) {
   std::vector<char> raw_file_metadata;
   FileMetadata* file_metadata;
 
-  std::filesystem::path fs_path = metadata_path.data();
-  Utils::readFileToMemory(fs_path, raw_file_metadata);
+  Utils::readFileToMemory(metadata_path.c_str(), raw_file_metadata);
   file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
 
   rust::Vec<u32> v;

@@ -64,7 +64,7 @@ size_t stats_total_data_size(btrblocks::OutputBlockStats* stats);
 double stats_compression_ratio(btrblocks::OutputBlockStats* stats);
 
 // FileMetadata
-rust::Vec<uint32_t> get_file_metadata(const rust::String& btr_dir_path);
+rust::Vec<uint32_t> get_file_metadata(rust::String btr_dir_path);
 
 }  // namespace btrblocksWrapper
 
