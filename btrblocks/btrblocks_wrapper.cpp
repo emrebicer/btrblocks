@@ -1,10 +1,12 @@
 // ------------------------------------------------------------------------------
 #include "btrblocks_wrapper.hpp"
+#include <filesystem>
 #include "btrblocks.hpp"
 #include "common/Log.hpp"
 #include "common/Utils.hpp"
+#include "compression/BtrReader.hpp"
 #include "cxx.h"
-#include <filesystem>
+#include "scheme/SchemePool.hpp"
 // ------------------------------------------------------------------------------
 namespace btrblocksWrapper {
 using namespace btrblocks;
@@ -177,6 +179,141 @@ rust::Vec<uint32_t> get_file_metadata(rust::String metadata_path) {
   }
 
   return v;
+}
+
+bool outputChunk(std::ofstream& csvstream,
+                 u32 tuple_count,
+                 const std::pair<u32, u32>& counter,
+                 const std::vector<u8>& decompressed_column,
+                 std::vector<BtrReader>& readers,
+                 bool requires_copy) {
+  for (size_t row = 0; row < tuple_count; row++) {
+    BtrReader& reader = readers[counter.first];
+    BitmapWrapper* nullmap = reader.getBitmap(counter.second - 1);
+
+    bool is_null;
+    if (nullmap->type() == BitmapType::ALLZEROS) {
+      is_null = true;
+    } else if (nullmap->type() == BitmapType::ALLONES) {
+      is_null = false;
+    } else {
+      is_null = !(nullmap->get_bitset()->test(row));
+    }
+
+    if (!is_null) {
+      switch (reader.getColumnType()) {
+        case ColumnType::INTEGER: {
+          auto int_array = reinterpret_cast<const INTEGER*>(decompressed_column.data());
+          csvstream << int_array[row];
+          break;
+        }
+        case ColumnType::DOUBLE: {
+          auto double_array = reinterpret_cast<const DOUBLE*>(decompressed_column.data());
+          csvstream << double_array[row];
+          break;
+        }
+        case ColumnType::STRING: {
+          std::string data;
+          if (requires_copy) {
+            auto string_pointer_array_viewer =
+                StringPointerArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
+            data = string_pointer_array_viewer(row);
+          } else {
+            auto string_array_viewer =
+                StringArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
+            data = string_array_viewer(row);
+          }
+          csvstream << data;
+          break;
+        }
+        default: {
+          cout << "Error: Type" << ConvertTypeToString(reader.getColumnType())
+               << " is not supported" << endl;
+          return false;
+        }
+      }
+    } else {
+      csvstream << "null";
+    }
+
+    csvstream << "\n";
+  }
+
+  return true;
+}
+
+bool decompress_column_into_file(rust::String btr_dir_path,
+                                 uint32_t column_index,
+                                 rust::String output_path) {
+  // For unknown reasons, this is necessary...
+  SchemePool::refresh();
+
+  // Get the metadata to read the part counts
+  std::vector<char> raw_file_metadata;
+
+  std::filesystem::path btr_dir = btr_dir_path.c_str();
+  std::filesystem::path metadata_path = btr_dir / "metadata";
+
+  Utils::readFileToMemory(metadata_path.string(), raw_file_metadata);
+  FileMetadata* file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
+
+  // Open output file
+  auto file = std::ofstream(output_path.data());
+  file << std::setprecision(32);
+
+  // Check if the column exists
+  if (file_metadata->num_columns < column_index) {
+    Log::error("column index ", column_index, " is non-existent");
+    return false;
+  }
+
+  // Read the number of parts
+  uint32_t num_parts = file_metadata->parts[column_index].num_parts;
+
+  // Open output file
+  auto output_stream = std::ofstream(output_path.c_str());
+  output_stream << std::setprecision(32);
+
+  // Prepare the readers
+  std::vector<BtrReader> readers;
+  std::vector<std::vector<char>> compressed_data(num_parts);
+
+  // Read files to the memory
+  for (u32 part_i = 0; part_i < num_parts; part_i++) {
+    auto path =
+        btr_dir / ("column" + std::to_string(column_index) + "_part" + std::to_string(part_i));
+    Utils::readFileToMemory(path.string(), compressed_data[part_i]);
+    readers.emplace_back(compressed_data[part_i].data());
+  }
+
+  // Counter contains a pair of <current_part_i, current_chunk_within_part_i>
+  std::pair<u32, u32> counter = {0, 0};
+
+  for (u32 chunk_i = 0; chunk_i < file_metadata->num_chunks; chunk_i++) {
+    std::vector<u8> output;
+
+    bool requires_copy = false;
+    u32 tuple_count = 0;
+
+    u32 part_i = counter.first;
+    BtrReader& reader = readers[part_i];
+    if (counter.second >= reader.getChunkCount()) {
+      counter.first++;
+      part_i++;
+      counter.second = 0;
+      reader = readers[part_i];
+    }
+
+    u32 part_chunk_i = counter.second;
+    tuple_count = reader.getTupleCount(part_chunk_i);
+    requires_copy = reader.readColumn(output, part_chunk_i);
+    counter.second++;
+    if (!outputChunk(output_stream, tuple_count, counter, output, readers, requires_copy)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 }  // namespace btrblocksWrapper
