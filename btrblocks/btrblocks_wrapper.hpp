@@ -42,10 +42,10 @@ void set_log_level(int32_t value);
 // Relation
 Relation* new_relation();
 void relation_add_column_int(Relation* relation,
-                             const rust::String& column_name,
+                             rust::String column_name,
                              IntMMapVector* btr_vec);
 void relation_add_column_double(Relation* relation,
-                                const rust::String& column_name,
+                                rust::String column_name,
                                 DoubleMMapVector* btr_vec);
 uint64_t relation_get_tuple_count(Relation* relation);
 Chunk* relation_get_chunk(Relation* relation, const rust::Vec<uint64_t>& ranges, size_t size);
@@ -64,11 +64,12 @@ size_t stats_total_data_size(btrblocks::OutputBlockStats* stats);
 double stats_compression_ratio(btrblocks::OutputBlockStats* stats);
 
 // FileMetadata
-rust::Vec<uint32_t> get_file_metadata(rust::String btr_dir_path);
+rust::Vec<uint32_t> get_file_metadata(rust::String btr_metadata_path);
 
 
 // Custom functions
-void decompress_column_into_file(rust::String btr_dir_path, uint32_t column_index, rust::String output_path);
+void decompress_column_into_file(rust::String btr_path, uint32_t column_index, rust::String output_path);
+rust::Vec<int32_t> decompress_column_i32(rust::String btr_path, uint32_t column_index);
 
 }  // namespace btrblocksWrapper
 

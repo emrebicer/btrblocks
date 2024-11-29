@@ -108,16 +108,16 @@ Relation* new_relation() {
 }
 
 void relation_add_column_int(Relation* relation,
-                             const rust::String& column_name,
+                             rust::String column_name,
                              IntMMapVector* btr_vec) {
-  Column column(column_name.data(), std::move(*btr_vec->data));
+  Column column(column_name.c_str(), std::move(*btr_vec->data));
   relation->addColumn(std::move(column));
 }
 
 void relation_add_column_double(Relation* relation,
-                                const rust::String& column_name,
+                                rust::String column_name,
                                 DoubleMMapVector* btr_vec) {
-  Column column(column_name.data(), std::move(*btr_vec->data));
+  Column column(column_name.c_str(), std::move(*btr_vec->data));
   relation->addColumn(std::move(column));
 }
 
@@ -162,11 +162,11 @@ double stats_compression_ratio(btrblocks::OutputBlockStats* stats) {
 }
 
 // FileMetadata
-rust::Vec<uint32_t> get_file_metadata(rust::String metadata_path) {
+rust::Vec<uint32_t> get_file_metadata(rust::String btr_metadata_path) {
   std::vector<char> raw_file_metadata;
   FileMetadata* file_metadata;
 
-  Utils::readFileToMemory(metadata_path.c_str(), raw_file_metadata);
+  Utils::readFileToMemory(btr_metadata_path.c_str(), raw_file_metadata);
   file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
 
   rust::Vec<u32> v;
@@ -182,16 +182,9 @@ rust::Vec<uint32_t> get_file_metadata(rust::String metadata_path) {
   return v;
 }
 
-void outputChunk(std::ofstream& csvstream,
-                 u32 tuple_count,
-                 const std::pair<u32, u32>& counter,
-                 const std::vector<u8>& decompressed_column,
-                 std::vector<BtrReader>& readers,
-                 bool requires_copy) {
-  for (size_t row = 0; row < tuple_count; row++) {
-    BtrReader& reader = readers[counter.first];
-    BitmapWrapper* nullmap = reader.getBitmap(counter.second - 1);
+bool reader_is_null(BtrReader& reader, u32 index, size_t row) {
 
+    BitmapWrapper* nullmap = reader.getBitmap(index);
     bool is_null;
     if (nullmap->type() == BitmapType::ALLZEROS) {
       is_null = true;
@@ -201,16 +194,29 @@ void outputChunk(std::ofstream& csvstream,
       is_null = !(nullmap->get_bitset()->test(row));
     }
 
+    return is_null;
+}
+
+void output_chunk_to_file(std::ofstream& output_stream,
+                 u32 tuple_count,
+                 const std::pair<u32, u32>& counter,
+                 const std::vector<u8>& decompressed_column,
+                 std::vector<BtrReader>& readers,
+                 bool requires_copy) {
+  for (size_t row = 0; row < tuple_count; row++) {
+    BtrReader& reader = readers[counter.first];
+    bool is_null = reader_is_null(reader, counter.second - 1, row);
+
     if (!is_null) {
       switch (reader.getColumnType()) {
         case ColumnType::INTEGER: {
           auto int_array = reinterpret_cast<const INTEGER*>(decompressed_column.data());
-          csvstream << int_array[row];
+          output_stream << int_array[row];
           break;
         }
         case ColumnType::DOUBLE: {
           auto double_array = reinterpret_cast<const DOUBLE*>(decompressed_column.data());
-          csvstream << double_array[row];
+          output_stream << double_array[row];
           break;
         }
         case ColumnType::STRING: {
@@ -224,7 +230,7 @@ void outputChunk(std::ofstream& csvstream,
                 StringArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
             data = string_array_viewer(row);
           }
-          csvstream << data;
+          output_stream << data;
           break;
         }
         default: {
@@ -233,14 +239,13 @@ void outputChunk(std::ofstream& csvstream,
         }
       }
     } else {
-      csvstream << "null";
+      output_stream << "null";
     }
-
-    csvstream << "\n";
+    output_stream << "\n";
   }
 }
 
-void decompress_column_into_file(rust::String btr_dir_path,
+void decompress_column_into_file(rust::String btr_path,
                                  uint32_t column_index,
                                  rust::String output_path) {
   // For unknown reasons, this is necessary...
@@ -249,15 +254,15 @@ void decompress_column_into_file(rust::String btr_dir_path,
   // Get the metadata to read the part counts
   std::vector<char> raw_file_metadata;
 
-  std::filesystem::path btr_dir = btr_dir_path.c_str();
+  std::filesystem::path btr_dir = btr_path.c_str();
   std::filesystem::path metadata_path = btr_dir / "metadata";
 
   Utils::readFileToMemory(metadata_path.string(), raw_file_metadata);
   FileMetadata* file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
 
   // Open output file
-  auto file = std::ofstream(output_path.data());
-  file << std::setprecision(32);
+  auto output_stream = std::ofstream(output_path.c_str());
+  output_stream << std::setprecision(32);
 
   // Check if the column exists
   if (file_metadata->num_columns < column_index) {
@@ -266,10 +271,6 @@ void decompress_column_into_file(rust::String btr_dir_path,
 
   // Read the number of parts
   uint32_t num_parts = file_metadata->parts[column_index].num_parts;
-
-  // Open output file
-  auto output_stream = std::ofstream(output_path.c_str());
-  output_stream << std::setprecision(32);
 
   // Prepare the readers
   std::vector<BtrReader> readers;
@@ -305,8 +306,13 @@ void decompress_column_into_file(rust::String btr_dir_path,
     tuple_count = reader.getTupleCount(part_chunk_i);
     requires_copy = reader.readColumn(output, part_chunk_i);
     counter.second++;
-    outputChunk(output_stream, tuple_count, counter, output, readers, requires_copy);
+    output_chunk_to_file(output_stream, tuple_count, counter, output, readers, requires_copy);
   }
+}
+
+rust::Vec<int32_t> decompress_column_i32(rust::String btr_path, uint32_t column_index) {
+  rust::Vec<int32_t> v;
+  return v;
 }
 
 }  // namespace btrblocksWrapper
