@@ -68,7 +68,7 @@ rust::Vec<uint32_t> get_file_metadata(rust::String btr_dir_path);
 
 
 // Custom functions
-bool decompress_column_into_file(rust::String btr_dir_path, uint32_t column_index, rust::String output_path);
+void decompress_column_into_file(rust::String btr_dir_path, uint32_t column_index, rust::String output_path);
 
 }  // namespace btrblocksWrapper
 

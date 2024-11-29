@@ -1,6 +1,7 @@
 // ------------------------------------------------------------------------------
 #include "btrblocks_wrapper.hpp"
 #include <filesystem>
+#include <string>
 #include "btrblocks.hpp"
 #include "common/Log.hpp"
 #include "common/Utils.hpp"
@@ -181,7 +182,7 @@ rust::Vec<uint32_t> get_file_metadata(rust::String metadata_path) {
   return v;
 }
 
-bool outputChunk(std::ofstream& csvstream,
+void outputChunk(std::ofstream& csvstream,
                  u32 tuple_count,
                  const std::pair<u32, u32>& counter,
                  const std::vector<u8>& decompressed_column,
@@ -227,9 +228,8 @@ bool outputChunk(std::ofstream& csvstream,
           break;
         }
         default: {
-          cout << "Error: Type" << ConvertTypeToString(reader.getColumnType())
-               << " is not supported" << endl;
-          return false;
+          throw Generic_Exception("Type " + ConvertTypeToString(reader.getColumnType()) +
+                                  " not supported");
         }
       }
     } else {
@@ -238,11 +238,9 @@ bool outputChunk(std::ofstream& csvstream,
 
     csvstream << "\n";
   }
-
-  return true;
 }
 
-bool decompress_column_into_file(rust::String btr_dir_path,
+void decompress_column_into_file(rust::String btr_dir_path,
                                  uint32_t column_index,
                                  rust::String output_path) {
   // For unknown reasons, this is necessary...
@@ -263,8 +261,7 @@ bool decompress_column_into_file(rust::String btr_dir_path,
 
   // Check if the column exists
   if (file_metadata->num_columns < column_index) {
-    Log::error("column index ", column_index, " is non-existent");
-    return false;
+    throw Generic_Exception("column index:" + std::to_string(column_index) + " does not exist");
   }
 
   // Read the number of parts
@@ -308,12 +305,8 @@ bool decompress_column_into_file(rust::String btr_dir_path,
     tuple_count = reader.getTupleCount(part_chunk_i);
     requires_copy = reader.readColumn(output, part_chunk_i);
     counter.second++;
-    if (!outputChunk(output_stream, tuple_count, counter, output, readers, requires_copy)) {
-      return false;
-    }
+    outputChunk(output_stream, tuple_count, counter, output, readers, requires_copy);
   }
-
-  return true;
 }
 
 }  // namespace btrblocksWrapper
