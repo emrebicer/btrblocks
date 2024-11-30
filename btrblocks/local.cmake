@@ -71,7 +71,7 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
 endif ()
 target_compile_options(btrblocks PUBLIC -Wno-unused-parameter)
 
-target_link_libraries(btrblocks Threads::Threads fsst fastpfor croaring dynamic_bitset) #asan
+target_link_libraries(btrblocks Threads::Threads fsst fastpfor croaring dynamic_bitset yaml tbb) #asan
 
 if (${WITH_LOGGING})
     target_link_libraries(btrblocks spdlog)

@@ -11,6 +11,7 @@
     let 
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+
     in {
 
         devShells.${system}.default = pkgs.mkShellNoCC {
@@ -26,11 +27,6 @@
               openssl_legacy
               curlFull
               ccls
-              gflags
-              yaml-cpp
-              spdlog
-              tbb
-              boost
               pkg-config
               openssl
               llvmPackages_latest.libclang
