@@ -77,6 +77,7 @@ include("${CMAKE_VENDOR_DIR}/csv-parser.cmake")
 
 include("${CMAKE_SOURCE_DIR}/btrblocks/local.cmake")  # btrblocks library
 include("${CMAKE_SOURCE_DIR}/btrfiles/local.cmake")   # btrblocks files library
+include("${CMAKE_SOURCE_DIR}/btrwrapper/local.cmake")   # btrblocks wrapper library for Rust FFI
 # include("${CMAKE_SOURCE_DIR}/test/local.cmake")       # btrblocks tests
 # include("${CMAKE_SOURCE_DIR}/bench/local.cmake")      # btrblocks tests
 # include("${CMAKE_SOURCE_DIR}/tools/local.cmake")      # btrblocks tooling
