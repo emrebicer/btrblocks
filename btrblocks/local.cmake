@@ -37,12 +37,7 @@ endif()
 
 file(GLOB_RECURSE BTR_HH btrblocks/**.hpp  btrblocks/**.h)
 file(GLOB_RECURSE BTR_CC btrblocks/**/**.cpp btrblocks/**.cpp  btrblocks/**.c)
-
-# Add `btrblocks_wrapper.cpp` explicitly
-set(BTR_WRAPPER_SRC btrblocks/btrblocks_wrapper.cpp)
-
-# Combine wrapper source with other source files
-set(BTR_SRC ${BTR_HH} ${BTR_CC} ${BTR_WRAPPER_SRC})
+set(BTR_SRC ${BTR_HH} ${BTR_CC})
 
 # Gather lintable files
 set(BTR_CC_LINTING "")
