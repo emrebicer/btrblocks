@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <string>
 
-/*#include "../btrfiles/btrfiles.hpp"*/
+#include "btrfiles.hpp"
 #include "btrblocks_wrapper.hpp"
 #include "btrblocks.hpp"
 
@@ -17,7 +17,7 @@
 #include "tbb/task_scheduler_init.h"
 #include "yaml-cpp/yaml.h"
 // ------------------------------------------------------------------------------
-namespace btrblocksWrapper {
+namespace btrWrapper {
 using namespace btrblocks;
 
 template <typename T>
@@ -54,11 +54,11 @@ bool compare_chunks(Relation* rel, Chunk* c1, Chunk* c2) {
   return check;
 }
 
-btrblocksWrapper::Buffer::Buffer(unique_ptr<uint8_t[]> buffer) {
+btrWrapper::Buffer::Buffer(unique_ptr<uint8_t[]> buffer) {
   data = std::move(buffer);
 }
 
-btrblocksWrapper::Buffer::Buffer(size_t size) {
+btrWrapper::Buffer::Buffer(size_t size) {
   std::unique_ptr<uint8_t[]> buffer(new uint8_t[size]);
   data = std::move(buffer);
 }
@@ -67,7 +67,7 @@ Buffer* new_buffer(size_t size) {
   return new Buffer(size);
 }
 
-btrblocksWrapper::IntMMapVector::IntMMapVector(Vector<int32_t>* vec) {
+btrWrapper::IntMMapVector::IntMMapVector(Vector<int32_t>* vec) {
   data = vec;
 }
 
@@ -82,7 +82,7 @@ IntMMapVector* new_int_mmapvector(const rust::Vec<int32_t>& vec) {
   return new IntMMapVector(data);
 }
 
-btrblocksWrapper::DoubleMMapVector::DoubleMMapVector(Vector<double>* vec) {
+btrWrapper::DoubleMMapVector::DoubleMMapVector(Vector<double>* vec) {
   data = vec;
 }
 
@@ -342,7 +342,7 @@ void chunk_to_vec(rust::Vec<T>& vec,
       }
     }
     case ColumnType::DOUBLE: {
-      if constexpr (std::is_same<T, int32_t>::value) {
+      if constexpr (std::is_same<T, double>::value) {
         auto double_array = reinterpret_cast<const DOUBLE*>(decompressed_column.data());
         for (size_t row = 0; row < tuple_count; row++) {
           bool is_null = reader_is_null(reader, counter.second - 1, row);
@@ -373,7 +373,7 @@ void chunk_to_vec(rust::Vec<T>& vec,
                   StringArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
               data = string_array_viewer(row);
             }
-            vec.push_back(data);
+            vec.push_back(rust::String(data));
           } else {
             vec.push_back("null");
           }
@@ -469,81 +469,85 @@ void csv_to_btr(rust::String csv_path,
                 rust::String btr_path,
                 rust::String binary_path,
                 rust::String schema_yaml_path) {
-  /*// This seems necessary to be*/
-  /*SchemePool::refresh();*/
-  /**/
-  /*// Init TBB TODO: is that actually still necessary ?*/
-  /*tbb::task_scheduler_init init(8);*/
-  /**/
-  /*// Load schema*/
-  /*std::filesystem::path schema_yaml_path_fs = schema_yaml_path.c_str();*/
-  /*cout <<"reading yaml with path: '"<< schema_yaml_path_fs.string() <<"'" <<  endl;*/
-  /*YAML::Node schema = YAML::LoadFile(schema_yaml_path_fs.string());*/
-  /**/
-  /*// Load and parse CSV*/
-  /*std::filesystem::path csv_path_fs = csv_path.c_str();*/
-  /*std::ifstream csv(csv_path_fs);*/
-  /*if (!csv.good()) {*/
-  /*  throw Generic_Exception("Unable to open specified csv file");*/
-  /*}*/
-  /**/
-  /*// parse writes the binary files*/
-  /*std::filesystem::path binary_path_fs = binary_path.c_str();*/
-  /*cout << "binary_path_fs: " << binary_path_fs << endl;*/
-  /*files::convertCSV(csv_path_fs.string(), schema, binary_path_fs.string());*/
-  /*cout << "done converting csv" << endl;*/
-  /**/
-  /*// Create relation*/
-  /*Relation relation = files::readDirectory(schema, binary_path_fs.string());*/
-  /*relation.name = schema_yaml_path_fs.stem();*/
-  /**/
-  /*// Prepare datastructures for btr compression*/
-  /*auto ranges = relation.getRanges(SplitStrategy::SEQUENTIAL, 9999);*/
-  /*assert(ranges.size() > 0);*/
-  /*Datablock datablockV2(relation);*/
+  // This seems necessary to be
+  SchemePool::refresh();
+
+  std::filesystem::path csv_path_fs = csv_path.c_str();
+  std::filesystem::path btr_path_fs = btr_path.c_str();
+  std::filesystem::path binary_path_fs = binary_path.c_str();
+  std::filesystem::path schema_yaml_path_fs = schema_yaml_path.c_str();
+
+  /*cout << "csv_fs:              " << csv_path_fs.string() <<  endl;*/
+  /*cout << "btr_path_fs:         " << btr_path_fs.string() << endl;*/
+  /*cout << "binary_path_fs:      " << binary_path_fs.string() << endl;*/
+  /*cout << "scheme_yaml_path_fs: " << schema_yaml_path_fs.string() << endl;*/
+
+  // Init TBB TODO: is that actually still necessary ?
+  tbb::task_scheduler_init init(8);
+
+  // Load schema
+  YAML::Node schema = YAML::LoadFile(schema_yaml_path_fs.string());
+
+  // Load and parse CSV
+  std::ifstream csv(csv_path_fs);
+  if (!csv.good()) {
+    throw Generic_Exception("Unable to open specified csv file");
+  }
+
+  // parse writes the binary files
+  files::convertCSV(csv_path_fs.string(), schema, binary_path_fs.string(), ",");
+
+  // Create relation
+  Relation relation = files::readDirectory(schema, binary_path_fs.string());
+  relation.name = schema_yaml_path_fs.stem();
+
+  // Prepare datastructures for btr compression
+  auto ranges = relation.getRanges(SplitStrategy::SEQUENTIAL, 9999);
+  assert(ranges.size() > 0);
+  Datablock datablockV2(relation);
+  std::filesystem::create_directory(btr_path.c_str());
   /*if (!std::filesystem::create_directory(btr_path.c_str())) {*/
   /*  throw Generic_Exception("Unable to create btr output directory");*/
   /*}*/
-  /**/
-  /*// These counter are for statistics that match the harbook.*/
-  /*std::vector<std::atomic_size_t> sizes_uncompressed(relation.columns.size());*/
-  /*std::vector<std::atomic_size_t> sizes_compressed(relation.columns.size());*/
-  /*std::vector<u32> part_counters(relation.columns.size());*/
-  /*std::vector<ColumnType> types(relation.columns.size());*/
-  /**/
-  /*std::filesystem::path btr_path_fs = btr_path.c_str();*/
-  /*tbb::parallel_for(SIZE(0), relation.columns.size(), [&](SIZE column_i) {*/
-  /*  types[column_i] = relation.columns[column_i].type;*/
-  /**/
-  /*  std::vector<InputChunk> input_chunks;*/
-  /*  std::string path_prefix =*/
-  /*      btr_path_fs.string() + "/" + "column" + std::to_string(column_i) + "_part";*/
-  /*  ColumnPart part;*/
-  /*  for (SIZE chunk_i = 0; chunk_i < ranges.size(); chunk_i++) {*/
-  /*    auto input_chunk = relation.getInputChunk(ranges[chunk_i], chunk_i, column_i);*/
-  /*    std::vector<u8> data = Datablock::compress(input_chunk);*/
-  /*    sizes_uncompressed[column_i] += input_chunk.size;*/
-  /**/
-  /*    if (!part.canAdd(data.size())) {*/
-  /*      std::string filename = path_prefix + std::to_string(part_counters[column_i]);*/
-  /*      sizes_compressed[column_i] += part.writeToDisk(filename);*/
-  /*      part_counters[column_i]++;*/
-  /*      input_chunks.clear();*/
-  /*    }*/
-  /**/
-  /*    input_chunks.push_back(std::move(input_chunk));*/
-  /*    part.addCompressedChunk(std::move(data));*/
-  /*  }*/
-  /**/
-  /*  if (!part.chunks.empty()) {*/
-  /*    std::string filename = path_prefix + std::to_string(part_counters[column_i]);*/
-  /*    sizes_compressed[column_i] += part.writeToDisk(filename);*/
-  /*    part_counters[column_i]++;*/
-  /*    input_chunks.clear();*/
-  /*  }*/
-  /*});*/
-  /**/
-  /*Datablock::writeMetadata(btr_path_fs.string() + "/metadata", types, part_counters, ranges.size());*/
+
+  // These counter are for statistics that match the harbook.
+  std::vector<std::atomic_size_t> sizes_uncompressed(relation.columns.size());
+  std::vector<std::atomic_size_t> sizes_compressed(relation.columns.size());
+  std::vector<u32> part_counters(relation.columns.size());
+  std::vector<ColumnType> types(relation.columns.size());
+
+  tbb::parallel_for(SIZE(0), relation.columns.size(), [&](SIZE column_i) {
+    types[column_i] = relation.columns[column_i].type;
+
+    std::vector<InputChunk> input_chunks;
+    std::string path_prefix =
+        btr_path_fs.string() + "/" + "column" + std::to_string(column_i) + "_part";
+    ColumnPart part;
+    for (SIZE chunk_i = 0; chunk_i < ranges.size(); chunk_i++) {
+      auto input_chunk = relation.getInputChunk(ranges[chunk_i], chunk_i, column_i);
+      std::vector<u8> data = Datablock::compress(input_chunk);
+      sizes_uncompressed[column_i] += input_chunk.size;
+
+      if (!part.canAdd(data.size())) {
+        std::string filename = path_prefix + std::to_string(part_counters[column_i]);
+        sizes_compressed[column_i] += part.writeToDisk(filename);
+        part_counters[column_i]++;
+        input_chunks.clear();
+      }
+
+      input_chunks.push_back(std::move(input_chunk));
+      part.addCompressedChunk(std::move(data));
+    }
+
+    if (!part.chunks.empty()) {
+      std::string filename = path_prefix + std::to_string(part_counters[column_i]);
+      sizes_compressed[column_i] += part.writeToDisk(filename);
+      part_counters[column_i]++;
+      input_chunks.clear();
+    }
+  });
+
+  Datablock::writeMetadata(btr_path_fs.string() + "/metadata", types, part_counters, ranges.size());
 }
 
-}  // namespace btrblocksWrapper
+}  // namespace btrWrapper

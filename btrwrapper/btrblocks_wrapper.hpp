@@ -4,7 +4,7 @@
 #include "btrblocks.hpp"
 #include "cxx.h"
 
-namespace btrblocksWrapper {
+namespace btrWrapper {
 using namespace btrblocks;
 
 // Helper functions
@@ -74,6 +74,6 @@ rust::Vec<rust::String> decompress_column_string(rust::String btr_path, uint32_t
 rust::Vec<double> decompress_column_f64(rust::String btr_path, uint32_t column_index);
 void csv_to_btr(rust::String csv_path, rust::String btr_path, rust::String binary_path, rust::String schema_yaml_path);
 
-}  // namespace btrblocksWrapper
+}  // namespace btrWrapper
 
 #endif

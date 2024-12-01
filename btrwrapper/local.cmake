@@ -31,21 +31,15 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
 endif ()
 target_compile_options(btrwrapper PUBLIC -Wno-unused-parameter)
 
-target_link_libraries(btrblocks btrfiles Threads::Threads fsst fastpfor croaring yaml tbb)
-# find_package(Boost REQUIRED COMPONENTS dynamic_bitset)
-# target_link_libraries(btrblocks Threads::Threads fsst fastpfor croaring Boost::dynamic_bitset)
-# target_link_libraries(btrblocks btrfiles yaml dynamic_bitset)
+target_link_libraries(btrblocks btrfiles yaml croaring tbb)
 
-
-# TODO including everything as public headers, as this is a research library
-# later on we might want to extract a minimal public interface.
-set(BTRWRAPPER_PUBLIC_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR})
-set(BTRWRAPPER_PRIVATE_INCLUDE_DIR)
+set(BTRWRAPPER_PUBLIC_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR} ${BTR_INCLUDE_DIR} ${BTRFILES_INCLUDE_DIR} ${YAML_INCLUDE_DIR} ${CROARING_INCLUDE_DIR} ${TBB_INCLUDE_DIR})
+set(BTRWRAPPER_PRIVATE_INCLUDE_DIR ${BTRWRAPPER_INCLUDE_DIR})
 set(BTRWRAPPER_INCLUDE_DIR ${BTRWRAPPER_PUBLIC_INCLUDE_DIR} ${BTRWRAPPER_PRIVATE_INCLUDE_DIR})
 
 target_include_directories(btrwrapper
-    PUBLIC ${BTR_PUBLIC_INCLUDE_DIR}
-    PRIVATE ${BTR_PRIVATE_INCLUDE_DIR})
+    PUBLIC ${BTRWRAPPER_PUBLIC_INCLUDE_DIR}
+    PRIVATE ${BTRWRAPPER_PRIVATE_INCLUDE_DIR})
 
 
 # ---------------------------------------------------------------------------
