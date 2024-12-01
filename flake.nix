@@ -27,6 +27,12 @@
               openssl_legacy
               curlFull
               ccls
+              gflags
+              yaml-cpp
+              croaring
+              spdlog
+              tbb
+              boost
               pkg-config
               openssl
               llvmPackages_latest.libclang
