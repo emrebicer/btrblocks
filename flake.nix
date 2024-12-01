@@ -13,7 +13,6 @@
       pkgs = nixpkgs.legacyPackages.${system};
 
     in {
-
         devShells.${system}.default = pkgs.mkShellNoCC {
           buildInputs = with pkgs; [
             (pkgs.python3.withPackages (python-pkgs: with python-pkgs; [
@@ -27,11 +26,11 @@
               openssl_legacy
               curlFull
               ccls
-              gflags
-              yaml-cpp
-              croaring
-              spdlog
-              tbb
+              # gflags
+              # yaml-cpp
+              # croaring
+              # spdlog
+              # tbb
               boost
               pkg-config
               openssl
