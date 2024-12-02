@@ -2,7 +2,7 @@
   description = "BtrBlocks git development flake";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
@@ -10,8 +10,7 @@
 
     let 
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
-
+      pkgs = nixpkgs-unstable.legacyPackages.${system};
     in {
         devShells.${system}.default = pkgs.mkShellNoCC {
           buildInputs = with pkgs; [
