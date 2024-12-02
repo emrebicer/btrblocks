@@ -11,8 +11,8 @@ endif ()
 # Files
 # ---------------------------------------------------------------------------
 
-file(GLOB_RECURSE BTRWRAPPER_HH btrwrapper/**.hpp btrwrapper/**.h)
-file(GLOB_RECURSE BTRWRAPPER_CC btrwrapper/**/**.cpp btrwrapper/**.cpp btrwrapper/**.c)
+file(GLOB_RECURSE BTRWRAPPER_HH btrwrapper/*.hpp btrwrapper/*.h)
+file(GLOB_RECURSE BTRWRAPPER_CC btrwrapper/**/**.cpp btrwrapper/*.cpp btrwrapper/*.c)
 set(BTRWRAPPER_SRC ${BTRWRAPPER_HH} ${BTRWRAPPER_CC})
 
 # ---------------------------------------------------------------------------
@@ -31,9 +31,9 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
 endif ()
 target_compile_options(btrwrapper PUBLIC -Wno-unused-parameter)
 
-target_link_libraries(btrblocks btrfiles yaml croaring tbb)
+target_link_libraries(btrblocks btrfiles yaml croaring tbb csv-parser)
 
-set(BTRWRAPPER_PUBLIC_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR} ${BTR_INCLUDE_DIR} ${BTRFILES_INCLUDE_DIR} ${YAML_INCLUDE_DIR} ${CROARING_INCLUDE_DIR} ${TBB_INCLUDE_DIR})
+set(BTRWRAPPER_PUBLIC_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR} ${BTR_INCLUDE_DIR} ${BTRFILES_INCLUDE_DIR} ${YAML_INCLUDE_DIR} ${CROARING_INCLUDE_DIR} ${TBB_INCLUDE_DIR} ${CSV_INCLUDE_DIR})
 set(BTRWRAPPER_PRIVATE_INCLUDE_DIR ${BTRWRAPPER_INCLUDE_DIR})
 set(BTRWRAPPER_INCLUDE_DIR ${BTRWRAPPER_PUBLIC_INCLUDE_DIR} ${BTRWRAPPER_PRIVATE_INCLUDE_DIR})
 

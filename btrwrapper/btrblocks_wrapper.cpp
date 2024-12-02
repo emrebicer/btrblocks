@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <string>
 
-#include "btrfiles.hpp"
+#include "util.hpp"
 #include "btrblocks_wrapper.hpp"
 #include "btrblocks.hpp"
 
@@ -63,7 +63,7 @@ btrWrapper::Buffer::Buffer(size_t size) {
   data = std::move(buffer);
 }
 
-Buffer* new_buffer(size_t size) {
+btrWrapper::Buffer* new_buffer(size_t size) {
   return new Buffer(size);
 }
 
@@ -495,10 +495,10 @@ void csv_to_btr(rust::String csv_path,
   }
 
   // parse writes the binary files
-  files::convertCSV(csv_path_fs.string(), schema, binary_path_fs.string(), ",");
+  btrWrapper::convert_csv(csv_path_fs.string(), schema, binary_path_fs.string(), ",");
 
   // Create relation
-  Relation relation = files::readDirectory(schema, binary_path_fs.string());
+  Relation relation = btrWrapper::read_directory(schema, binary_path_fs.string());
   relation.name = schema_yaml_path_fs.stem();
 
   // Prepare datastructures for btr compression
@@ -506,9 +506,6 @@ void csv_to_btr(rust::String csv_path,
   assert(ranges.size() > 0);
   Datablock datablockV2(relation);
   std::filesystem::create_directory(btr_path.c_str());
-  /*if (!std::filesystem::create_directory(btr_path.c_str())) {*/
-  /*  throw Generic_Exception("Unable to create btr output directory");*/
-  /*}*/
 
   // These counter are for statistics that match the harbook.
   std::vector<std::atomic_size_t> sizes_uncompressed(relation.columns.size());
