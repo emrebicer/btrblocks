@@ -72,7 +72,7 @@ void decompress_column_into_file(rust::String btr_path, uint32_t column_index, r
 rust::Vec<int32_t> decompress_column_i32(rust::String btr_path, uint32_t column_index);
 rust::Vec<rust::String> decompress_column_string(rust::String btr_path, uint32_t column_index);
 rust::Vec<double> decompress_column_f64(rust::String btr_path, uint32_t column_index);
-void csv_to_btr(rust::String csv_path, rust::String btr_path, rust::String binary_path, rust::String schema_yaml_path);
+void csv_to_btr(rust::String csv_path, rust::String btr_path, rust::String binary_path, rust::Vec<rust::String> columns_metadata_raw);
 
 }  // namespace btrWrapper
 

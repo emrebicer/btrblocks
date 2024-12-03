@@ -15,13 +15,88 @@
 #include "cxx.h"
 #include "tbb/parallel_for.h"
 #include "tbb/task_scheduler_init.h"
-#include "yaml-cpp/yaml.h"
 // ------------------------------------------------------------------------------
 namespace btrWrapper {
 using namespace btrblocks;
 
 template <typename T>
-bool validateData(size_t size, T* input, T* output) {
+void chunk_to_vec(rust::Vec<T>& vec,
+                  u32 tuple_count,
+                  const std::pair<u32, u32>& counter,
+                  const std::vector<u8>& decompressed_column,
+                  std::vector<BtrReader>& readers,
+                  bool requires_copy) {
+  BtrReader& reader = readers[counter.first];
+
+  switch (reader.getColumnType()) {
+    case ColumnType::INTEGER: {
+      if constexpr (std::is_same<T, int32_t>::value) {
+        auto int_array = reinterpret_cast<const INTEGER*>(decompressed_column.data());
+        for (size_t row = 0; row < tuple_count; row++) {
+          bool is_null = btrWrapper::reader_is_null(reader, counter.second - 1, row);
+          if (!is_null) {
+            vec.push_back(int_array[row]);
+          } else {
+            vec.push_back(0);
+          }
+        }
+        break;
+      } else {
+        throw Generic_Exception("Requested column type T does not match 'integer'");
+      }
+    }
+    case ColumnType::DOUBLE: {
+      if constexpr (std::is_same<T, double>::value) {
+        auto double_array = reinterpret_cast<const DOUBLE*>(decompressed_column.data());
+        for (size_t row = 0; row < tuple_count; row++) {
+          bool is_null = btrWrapper::reader_is_null(reader, counter.second - 1, row);
+          if (!is_null) {
+            vec.push_back(double_array[row]);
+          } else {
+            vec.push_back(0);
+          }
+        }
+        break;
+      } else {
+        throw Generic_Exception("Requested column type T does not match 'double'");
+      }
+    }
+    case ColumnType::STRING: {
+      if constexpr (std::is_same<T, rust::String>::value) {
+        for (size_t row = 0; row < tuple_count; row++) {
+          bool is_null = btrWrapper::reader_is_null(reader, counter.second - 1, row);
+
+          if (!is_null) {
+            std::string data;
+            if (requires_copy) {
+              auto string_pointer_array_viewer =
+                  StringPointerArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
+              data = string_pointer_array_viewer(row);
+            } else {
+              auto string_array_viewer =
+                  StringArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
+              data = string_array_viewer(row);
+            }
+            vec.push_back(rust::String(data));
+          } else {
+            vec.push_back("null");
+          }
+        }
+        break;
+      } else {
+        throw Generic_Exception("Requested column type T does not match 'string'");
+      }
+    }
+    default: {
+      throw Generic_Exception("Type " + ConvertTypeToString(reader.getColumnType()) +
+                              " not supported");
+    }
+  }
+}
+
+
+template <typename T>
+bool validate_data(size_t size, T* input, T* output) {
   for (auto i = 0u; i != size; ++i) {
     if (input[i] != output[i]) {
       std::cout << "value @" << i << " does not match; in " << input[i] << " vs out" << output[i]
@@ -32,6 +107,70 @@ bool validateData(size_t size, T* input, T* output) {
   return true;
 }
 
+
+template <typename T>
+rust::Vec<T> decompress_column(rust::String btr_path, uint32_t column_index) {
+  // For unknown reasons, this is necessary...
+  SchemePool::refresh();
+
+  // Get the metadata to read the part counts
+  std::vector<char> raw_file_metadata;
+
+  std::filesystem::path btr_dir = btr_path.c_str();
+  std::filesystem::path metadata_path = btr_dir / "metadata";
+
+  Utils::readFileToMemory(metadata_path.string(), raw_file_metadata);
+  FileMetadata* file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
+
+  // Check if the column exists
+  if (file_metadata->num_columns < column_index) {
+    throw Generic_Exception("column index:" + std::to_string(column_index) + " does not exist");
+  }
+
+  // Read the number of parts
+  uint32_t num_parts = file_metadata->parts[column_index].num_parts;
+
+  // Prepare the readers
+  std::vector<BtrReader> readers;
+  std::vector<std::vector<char>> compressed_data(num_parts);
+
+  // Read files to the memory
+  for (u32 part_i = 0; part_i < num_parts; part_i++) {
+    auto path =
+        btr_dir / ("column" + std::to_string(column_index) + "_part" + std::to_string(part_i));
+    Utils::readFileToMemory(path.string(), compressed_data[part_i]);
+    readers.emplace_back(compressed_data[part_i].data());
+  }
+
+  // Counter contains a pair of <current_part_i, current_chunk_within_part_i>
+  std::pair<u32, u32> counter = {0, 0};
+
+  rust::Vec<T> vec;
+  for (u32 chunk_i = 0; chunk_i < file_metadata->num_chunks; chunk_i++) {
+    std::vector<u8> output;
+
+    bool requires_copy = false;
+    u32 tuple_count = 0;
+
+    u32 part_i = counter.first;
+    BtrReader& reader = readers[part_i];
+    if (counter.second >= reader.getChunkCount()) {
+      counter.first++;
+      part_i++;
+      counter.second = 0;
+      reader = readers[part_i];
+    }
+
+    u32 part_chunk_i = counter.second;
+    tuple_count = reader.getTupleCount(part_chunk_i);
+    requires_copy = reader.readColumn(output, part_chunk_i);
+    counter.second++;
+    chunk_to_vec(vec, tuple_count, counter, output, readers, requires_copy);
+  }
+
+  return vec;
+}
+
 bool compare_chunks(Relation* rel, Chunk* c1, Chunk* c2) {
   int size = rel->columns.at(0).size();
   bool check;
@@ -40,11 +179,11 @@ bool compare_chunks(Relation* rel, Chunk* c1, Chunk* c2) {
     auto& decomp = c2->columns[col];
     switch (rel->columns[col].type) {
       case btrblocks::ColumnType::INTEGER:
-        check = validateData(size, reinterpret_cast<int32_t*>(orig.get()),
+        check = btrWrapper::validate_data(size, reinterpret_cast<int32_t*>(orig.get()),
                              reinterpret_cast<int32_t*>(decomp.get()));
         break;
       case btrblocks::ColumnType::DOUBLE:
-        check = validateData(size, reinterpret_cast<double*>(orig.get()),
+        check = btrWrapper::validate_data(size, reinterpret_cast<double*>(orig.get()),
                              reinterpret_cast<double*>(decomp.get()));
         break;
       default:
@@ -188,68 +327,6 @@ rust::Vec<uint32_t> get_file_metadata(rust::String btr_metadata_path) {
   return v;
 }
 
-bool reader_is_null(BtrReader& reader, u32 index, size_t row) {
-  BitmapWrapper* nullmap = reader.getBitmap(index);
-  bool is_null;
-  if (nullmap->type() == BitmapType::ALLZEROS) {
-    is_null = true;
-  } else if (nullmap->type() == BitmapType::ALLONES) {
-    is_null = false;
-  } else {
-    is_null = !(nullmap->get_bitset()->test(row));
-  }
-
-  return is_null;
-}
-
-void output_chunk_to_file(std::ofstream& output_stream,
-                          u32 tuple_count,
-                          const std::pair<u32, u32>& counter,
-                          const std::vector<u8>& decompressed_column,
-                          std::vector<BtrReader>& readers,
-                          bool requires_copy) {
-  for (size_t row = 0; row < tuple_count; row++) {
-    BtrReader& reader = readers[counter.first];
-    bool is_null = reader_is_null(reader, counter.second - 1, row);
-
-    if (!is_null) {
-      switch (reader.getColumnType()) {
-        case ColumnType::INTEGER: {
-          auto int_array = reinterpret_cast<const INTEGER*>(decompressed_column.data());
-          output_stream << int_array[row];
-          break;
-        }
-        case ColumnType::DOUBLE: {
-          auto double_array = reinterpret_cast<const DOUBLE*>(decompressed_column.data());
-          output_stream << double_array[row];
-          break;
-        }
-        case ColumnType::STRING: {
-          std::string data;
-          if (requires_copy) {
-            auto string_pointer_array_viewer =
-                StringPointerArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
-            data = string_pointer_array_viewer(row);
-          } else {
-            auto string_array_viewer =
-                StringArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
-            data = string_array_viewer(row);
-          }
-          output_stream << data;
-          break;
-        }
-        default: {
-          throw Generic_Exception("Type " + ConvertTypeToString(reader.getColumnType()) +
-                                  " not supported");
-        }
-      }
-    } else {
-      output_stream << "null";
-    }
-    output_stream << "\n";
-  }
-}
-
 void decompress_column_into_file(rust::String btr_path,
                                  uint32_t column_index,
                                  rust::String output_path) {
@@ -315,178 +392,40 @@ void decompress_column_into_file(rust::String btr_path,
   }
 }
 
-template <typename T>
-void chunk_to_vec(rust::Vec<T>& vec,
-                  u32 tuple_count,
-                  const std::pair<u32, u32>& counter,
-                  const std::vector<u8>& decompressed_column,
-                  std::vector<BtrReader>& readers,
-                  bool requires_copy) {
-  BtrReader& reader = readers[counter.first];
-
-  switch (reader.getColumnType()) {
-    case ColumnType::INTEGER: {
-      if constexpr (std::is_same<T, int32_t>::value) {
-        auto int_array = reinterpret_cast<const INTEGER*>(decompressed_column.data());
-        for (size_t row = 0; row < tuple_count; row++) {
-          bool is_null = reader_is_null(reader, counter.second - 1, row);
-          if (!is_null) {
-            vec.push_back(int_array[row]);
-          } else {
-            vec.push_back(0);
-          }
-        }
-        break;
-      } else {
-        throw Generic_Exception("Requested column type T does not match 'integer'");
-      }
-    }
-    case ColumnType::DOUBLE: {
-      if constexpr (std::is_same<T, double>::value) {
-        auto double_array = reinterpret_cast<const DOUBLE*>(decompressed_column.data());
-        for (size_t row = 0; row < tuple_count; row++) {
-          bool is_null = reader_is_null(reader, counter.second - 1, row);
-          if (!is_null) {
-            vec.push_back(double_array[row]);
-          } else {
-            vec.push_back(0);
-          }
-        }
-        break;
-      } else {
-        throw Generic_Exception("Requested column type T does not match 'double'");
-      }
-    }
-    case ColumnType::STRING: {
-      if constexpr (std::is_same<T, rust::String>::value) {
-        for (size_t row = 0; row < tuple_count; row++) {
-          bool is_null = reader_is_null(reader, counter.second - 1, row);
-
-          if (!is_null) {
-            std::string data;
-            if (requires_copy) {
-              auto string_pointer_array_viewer =
-                  StringPointerArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
-              data = string_pointer_array_viewer(row);
-            } else {
-              auto string_array_viewer =
-                  StringArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
-              data = string_array_viewer(row);
-            }
-            vec.push_back(rust::String(data));
-          } else {
-            vec.push_back("null");
-          }
-        }
-        break;
-      } else {
-        throw Generic_Exception("Requested column type T does not match 'string'");
-      }
-    }
-    default: {
-      throw Generic_Exception("Type " + ConvertTypeToString(reader.getColumnType()) +
-                              " not supported");
-    }
-  }
-}
-
-template <typename T>
-rust::Vec<T> decompress_column(rust::String btr_path, uint32_t column_index) {
-  // For unknown reasons, this is necessary...
-  SchemePool::refresh();
-
-  // Get the metadata to read the part counts
-  std::vector<char> raw_file_metadata;
-
-  std::filesystem::path btr_dir = btr_path.c_str();
-  std::filesystem::path metadata_path = btr_dir / "metadata";
-
-  Utils::readFileToMemory(metadata_path.string(), raw_file_metadata);
-  FileMetadata* file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
-
-  // Check if the column exists
-  if (file_metadata->num_columns < column_index) {
-    throw Generic_Exception("column index:" + std::to_string(column_index) + " does not exist");
-  }
-
-  // Read the number of parts
-  uint32_t num_parts = file_metadata->parts[column_index].num_parts;
-
-  // Prepare the readers
-  std::vector<BtrReader> readers;
-  std::vector<std::vector<char>> compressed_data(num_parts);
-
-  // Read files to the memory
-  for (u32 part_i = 0; part_i < num_parts; part_i++) {
-    auto path =
-        btr_dir / ("column" + std::to_string(column_index) + "_part" + std::to_string(part_i));
-    Utils::readFileToMemory(path.string(), compressed_data[part_i]);
-    readers.emplace_back(compressed_data[part_i].data());
-  }
-
-  // Counter contains a pair of <current_part_i, current_chunk_within_part_i>
-  std::pair<u32, u32> counter = {0, 0};
-
-  rust::Vec<T> vec;
-  for (u32 chunk_i = 0; chunk_i < file_metadata->num_chunks; chunk_i++) {
-    std::vector<u8> output;
-
-    bool requires_copy = false;
-    u32 tuple_count = 0;
-
-    u32 part_i = counter.first;
-    BtrReader& reader = readers[part_i];
-    if (counter.second >= reader.getChunkCount()) {
-      counter.first++;
-      part_i++;
-      counter.second = 0;
-      reader = readers[part_i];
-    }
-
-    u32 part_chunk_i = counter.second;
-    tuple_count = reader.getTupleCount(part_chunk_i);
-    requires_copy = reader.readColumn(output, part_chunk_i);
-    counter.second++;
-    chunk_to_vec(vec, tuple_count, counter, output, readers, requires_copy);
-  }
-
-  return vec;
-}
-
 rust::Vec<int32_t> decompress_column_i32(rust::String btr_path, uint32_t column_index) {
-  return decompress_column<int32_t>(btr_path, column_index);
+  return btrWrapper::decompress_column<int32_t>(btr_path, column_index);
 }
 
 rust::Vec<rust::String> decompress_column_string(rust::String btr_path, uint32_t column_index) {
-  return decompress_column<rust::String>(btr_path, column_index);
+  return btrWrapper::decompress_column<rust::String>(btr_path, column_index);
 }
 
 rust::Vec<double> decompress_column_f64(rust::String btr_path, uint32_t column_index) {
-  return decompress_column<double>(btr_path, column_index);
+  return btrWrapper::decompress_column<double>(btr_path, column_index);
 }
 
 void csv_to_btr(rust::String csv_path,
                 rust::String btr_path,
                 rust::String binary_path,
-                rust::String schema_yaml_path) {
+                rust::Vec<rust::String> columns_metadata_raw) {
   // This seems necessary to be
   SchemePool::refresh();
 
   std::filesystem::path csv_path_fs = csv_path.c_str();
   std::filesystem::path btr_path_fs = btr_path.c_str();
   std::filesystem::path binary_path_fs = binary_path.c_str();
-  std::filesystem::path schema_yaml_path_fs = schema_yaml_path.c_str();
 
   /*cout << "csv_fs:              " << csv_path_fs.string() <<  endl;*/
   /*cout << "btr_path_fs:         " << btr_path_fs.string() << endl;*/
   /*cout << "binary_path_fs:      " << binary_path_fs.string() << endl;*/
-  /*cout << "scheme_yaml_path_fs: " << schema_yaml_path_fs.string() << endl;*/
 
   // Init TBB TODO: is that actually still necessary ?
   tbb::task_scheduler_init init(8);
 
-  // Load schema
-  YAML::Node schema = YAML::LoadFile(schema_yaml_path_fs.string());
+  vector<ColumnMetadata> columns;
+  for (size_t i = 0; i < columns_metadata_raw.size(); i += 2) {
+    columns.push_back(ColumnMetadata { columns_metadata_raw.at(i).data(), columns_metadata_raw.at(i + 1).data()});
+  }
 
   // Load and parse CSV
   std::ifstream csv(csv_path_fs);
@@ -495,11 +434,11 @@ void csv_to_btr(rust::String csv_path,
   }
 
   // parse writes the binary files
-  btrWrapper::convert_csv(csv_path_fs.string(), schema, binary_path_fs.string(), ",");
+  btrWrapper::convert_csv(csv_path_fs.string(), columns, binary_path_fs.string(), ",");
 
   // Create relation
-  Relation relation = btrWrapper::read_directory(schema, binary_path_fs.string());
-  relation.name = schema_yaml_path_fs.stem();
+  Relation relation = btrWrapper::read_directory(columns, binary_path_fs.string());
+  /*relation.name = schema_yaml_path_fs.stem();*/
 
   // Prepare datastructures for btr compression
   auto ranges = relation.getRanges(SplitStrategy::SEQUENTIAL, 9999);
