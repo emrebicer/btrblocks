@@ -34,16 +34,14 @@ class DoubleMMapVector {
 DoubleMMapVector* new_double_mmapvector(const rust::Vec<double>& vec);
 
 // Configuration
-void configure_btrblocks(uint32_t max_depth);
+void configure_btrblocks(uint32_t max_depth, uint32_t block_size);
 
 // Log
 void set_log_level(int32_t value);
 
 // Relation
 Relation* new_relation();
-void relation_add_column_int(Relation* relation,
-                             rust::String column_name,
-                             IntMMapVector* btr_vec);
+void relation_add_column_int(Relation* relation, rust::String column_name, IntMMapVector* btr_vec);
 void relation_add_column_double(Relation* relation,
                                 rust::String column_name,
                                 DoubleMMapVector* btr_vec);
@@ -66,13 +64,28 @@ double stats_compression_ratio(btrblocks::OutputBlockStats* stats);
 // FileMetadata
 rust::Vec<uint32_t> get_file_metadata(rust::String btr_metadata_path);
 
-
 // Custom functions
-void decompress_column_into_file(rust::String btr_path, uint32_t column_index, rust::String output_path);
+void decompress_column_into_file(rust::String btr_path,
+                                 uint32_t column_index,
+                                 rust::String output_path);
 rust::Vec<int32_t> decompress_column_i32(rust::String btr_path, uint32_t column_index);
 rust::Vec<rust::String> decompress_column_string(rust::String btr_path, uint32_t column_index);
 rust::Vec<double> decompress_column_f64(rust::String btr_path, uint32_t column_index);
-void csv_to_btr(rust::String csv_path, rust::String btr_path, rust::String binary_path, rust::Vec<rust::String> columns_metadata_raw);
+
+rust::Vec<int32_t> decompress_column_part_i32(rust::String btr_path,
+                                              uint32_t column_index,
+                                              uint32_t part_index);
+rust::Vec<rust::String> decompress_column_part_string(rust::String btr_path,
+                                                      uint32_t column_index,
+                                                      uint32_t part_index);
+rust::Vec<double> decompress_column_part_f64(rust::String btr_path,
+                                             uint32_t column_index,
+                                             uint32_t part_index);
+
+void csv_to_btr(rust::String csv_path,
+                rust::String btr_path,
+                rust::String binary_path,
+                rust::Vec<rust::String> columns_metadata_raw);
 
 }  // namespace btrWrapper
 
