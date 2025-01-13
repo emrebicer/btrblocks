@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------------------
-#include <string>
 #include <filesystem>
+#include <string>
 
 #include "btrblocks.hpp"
 
@@ -24,7 +24,6 @@ struct ColumnDescriptor {
   u32 empty_count = 0;  // 0 by double and integers, '' by strings
 };
 
-
 bool reader_is_null(BtrReader& reader, u32 index, size_t row) {
   BitmapWrapper* nullmap = reader.getBitmap(index);
   bool is_null;
@@ -38,55 +37,6 @@ bool reader_is_null(BtrReader& reader, u32 index, size_t row) {
 
   return is_null;
 }
-
-void output_chunk_to_file(std::ofstream& output_stream,
-                          u32 tuple_count,
-                          const std::pair<u32, u32>& counter,
-                          const std::vector<u8>& decompressed_column,
-                          std::vector<BtrReader>& readers,
-                          bool requires_copy) {
-  for (size_t row = 0; row < tuple_count; row++) {
-    BtrReader& reader = readers[counter.first];
-    bool is_null = reader_is_null(reader, counter.second - 1, row);
-
-    if (!is_null) {
-      switch (reader.getColumnType()) {
-        case ColumnType::INTEGER: {
-          auto int_array = reinterpret_cast<const INTEGER*>(decompressed_column.data());
-          output_stream << int_array[row];
-          break;
-        }
-        case ColumnType::DOUBLE: {
-          auto double_array = reinterpret_cast<const DOUBLE*>(decompressed_column.data());
-          output_stream << double_array[row];
-          break;
-        }
-        case ColumnType::STRING: {
-          std::string data;
-          if (requires_copy) {
-            auto string_pointer_array_viewer =
-                StringPointerArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
-            data = string_pointer_array_viewer(row);
-          } else {
-            auto string_array_viewer =
-                StringArrayViewer(reinterpret_cast<const u8*>(decompressed_column.data()));
-            data = string_array_viewer(row);
-          }
-          output_stream << data;
-          break;
-        }
-        default: {
-          throw Generic_Exception("Type " + ConvertTypeToString(reader.getColumnType()) +
-                                  " not supported");
-        }
-      }
-    } else {
-      output_stream << "null";
-    }
-    output_stream << "\n";
-  }
-}
-
 
 void convert_csv(const string csv_path,
                  vector<ColumnMetadata> columns_metadata,

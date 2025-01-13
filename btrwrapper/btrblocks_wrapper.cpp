@@ -180,44 +180,30 @@ bool validate_data(size_t size, T* input, T* output) {
 }
 
 template <typename T>
-rust::Vec<T> decompress_column(rust::String btr_path, uint32_t column_index) {
+rust::Vec<T> decompress_column(const rust::Vec<uint8_t>& column_part_bytes,
+                               const rust::Vec<size_t>& part_ending_indexes,
+                               uint32_t num_chunks) {
   // For unknown reasons, this is necessary...
   SchemePool::refresh();
 
-  // Get the metadata to read the part counts
-  std::vector<char> raw_file_metadata;
-
-  std::filesystem::path btr_dir = btr_path.c_str();
-  std::filesystem::path metadata_path = btr_dir / "metadata";
-
-  Utils::readFileToMemory(metadata_path.string(), raw_file_metadata);
-  FileMetadata* file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
-
-  // Check if the column exists
-  if (file_metadata->num_columns < column_index) {
-    throw Generic_Exception("column index:" + std::to_string(column_index) + " does not exist");
-  }
-
-  // Read the number of parts
-  uint32_t num_parts = file_metadata->parts[column_index].num_parts;
-
   // Prepare the readers
   std::vector<BtrReader> readers;
-  std::vector<std::vector<char>> compressed_data(num_parts);
+  std::vector<std::vector<char>> compressed_data(part_ending_indexes.size());
 
-  // Read files to the memory
-  for (u32 part_i = 0; part_i < num_parts; part_i++) {
-    auto path =
-        btr_dir / ("column" + std::to_string(column_index) + "_part" + std::to_string(part_i));
-    Utils::readFileToMemory(path.string(), compressed_data[part_i]);
+  size_t start = 0;
+  for (u32 part_i = 0; part_i < part_ending_indexes.size(); part_i++) {
+    size_t end = part_ending_indexes[part_i];
+    compressed_data[part_i] =
+        std::vector<char>(column_part_bytes.begin() + start, column_part_bytes.begin() + end);
     readers.emplace_back(compressed_data[part_i].data());
+    start = end;
   }
 
   // Counter contains a pair of <current_part_i, current_chunk_within_part_i>
   std::pair<u32, u32> counter = {0, 0};
 
   rust::Vec<T> vec;
-  for (u32 chunk_i = 0; chunk_i < file_metadata->num_chunks; chunk_i++) {
+  for (u32 chunk_i = 0; chunk_i < num_chunks; chunk_i++) {
     std::vector<u8> output;
 
     bool requires_copy = false;
@@ -243,19 +229,16 @@ rust::Vec<T> decompress_column(rust::String btr_path, uint32_t column_index) {
 }
 
 template <typename T>
-rust::Vec<T> decompress_column_part(rust::String btr_path,
+rust::Vec<T> decompress_column_part(const rust::Vec<uint8_t>& part_bytes,
+                                    const rust::Vec<uint8_t>& metadata_bytes,
                                     uint32_t column_index,
                                     uint32_t part_index) {
   // For unknown reasons, this is necessary...
   SchemePool::refresh();
 
   // Get the metadata to read the part counts
-  std::vector<char> raw_file_metadata;
+  std::vector<char> raw_file_metadata(metadata_bytes.begin(), metadata_bytes.end());
 
-  std::filesystem::path btr_dir = btr_path.c_str();
-  std::filesystem::path metadata_path = btr_dir / "metadata";
-
-  Utils::readFileToMemory(metadata_path.string(), raw_file_metadata);
   FileMetadata* file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
 
   // Check if the column exists
@@ -271,12 +254,8 @@ rust::Vec<T> decompress_column_part(rust::String btr_path,
     throw Generic_Exception("part index:" + std::to_string(part_index) + " does not exist");
   }
 
-  // Read file to the memory
-  std::vector<char> compressed_data;
-  auto path =
-      btr_dir / ("column" + std::to_string(column_index) + "_part" + std::to_string(part_index));
-  Utils::readFileToMemory(path.string(), compressed_data);
-  // Prepare the readers
+  // Prepare the reader
+  std::vector<char> compressed_data(part_bytes.begin(), part_bytes.end());
   BtrReader reader(compressed_data.data());
 
   // Current chunk index in the current part_index
@@ -437,11 +416,10 @@ double stats_compression_ratio(btrblocks::OutputBlockStats* stats) {
 }
 
 // FileMetadata
-rust::Vec<uint32_t> get_file_metadata(rust::String btr_metadata_path) {
-  std::vector<char> raw_file_metadata;
+rust::Vec<uint32_t> get_file_metadata(const rust::Vec<uint8_t>& metadata_bytes) {
+  std::vector<char> raw_file_metadata(metadata_bytes.begin(), metadata_bytes.end());
   FileMetadata* file_metadata;
 
-  Utils::readFileToMemory(btr_metadata_path.c_str(), raw_file_metadata);
   file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
 
   rust::Vec<u32> v;
@@ -457,99 +435,47 @@ rust::Vec<uint32_t> get_file_metadata(rust::String btr_metadata_path) {
   return v;
 }
 
-void decompress_column_into_file(rust::String btr_path,
-                                 uint32_t column_index,
-                                 rust::String output_path) {
-  // For unknown reasons, this is necessary...
-  SchemePool::refresh();
-
-  // Get the metadata to read the part counts
-  std::vector<char> raw_file_metadata;
-
-  std::filesystem::path btr_dir = btr_path.c_str();
-  std::filesystem::path metadata_path = btr_dir / "metadata";
-
-  Utils::readFileToMemory(metadata_path.string(), raw_file_metadata);
-  FileMetadata* file_metadata = reinterpret_cast<FileMetadata*>(raw_file_metadata.data());
-
-  // Open output file
-  auto output_stream = std::ofstream(output_path.c_str());
-  output_stream << std::setprecision(32);
-
-  // Check if the column exists
-  if (file_metadata->num_columns < column_index) {
-    throw Generic_Exception("column index:" + std::to_string(column_index) + " does not exist");
-  }
-
-  // Read the number of parts
-  uint32_t num_parts = file_metadata->parts[column_index].num_parts;
-
-  // Prepare the readers
-  std::vector<BtrReader> readers;
-  std::vector<std::vector<char>> compressed_data(num_parts);
-
-  // Read files to the memory
-  for (u32 part_i = 0; part_i < num_parts; part_i++) {
-    auto path =
-        btr_dir / ("column" + std::to_string(column_index) + "_part" + std::to_string(part_i));
-    Utils::readFileToMemory(path.string(), compressed_data[part_i]);
-    readers.emplace_back(compressed_data[part_i].data());
-  }
-
-  // Counter contains a pair of <current_part_i, current_chunk_within_part_i>
-  std::pair<u32, u32> counter = {0, 0};
-
-  for (u32 chunk_i = 0; chunk_i < file_metadata->num_chunks; chunk_i++) {
-    std::vector<u8> output;
-
-    bool requires_copy = false;
-    u32 tuple_count = 0;
-
-    u32 part_i = counter.first;
-    BtrReader& reader = readers[part_i];
-    if (counter.second >= reader.getChunkCount()) {
-      counter.first++;
-      part_i++;
-      counter.second = 0;
-      reader = readers[part_i];
-    }
-
-    u32 part_chunk_i = counter.second;
-    tuple_count = reader.getTupleCount(part_chunk_i);
-    requires_copy = reader.readColumn(output, part_chunk_i);
-    counter.second++;
-    output_chunk_to_file(output_stream, tuple_count, counter, output, readers, requires_copy);
-  }
+rust::Vec<int32_t> decompress_column_i32(const rust::Vec<uint8_t>& column_part_bytes,
+                                         const rust::Vec<size_t>& part_ending_indexes,
+                                         uint32_t num_chunks) {
+  return btrWrapper::decompress_column<int32_t>(column_part_bytes, part_ending_indexes, num_chunks);
 }
 
-rust::Vec<int32_t> decompress_column_i32(rust::String btr_path, uint32_t column_index) {
-  return btrWrapper::decompress_column<int32_t>(btr_path, column_index);
-}
-
-rust::Vec<int32_t> decompress_column_part_i32(rust::String btr_path,
+rust::Vec<int32_t> decompress_column_part_i32(const rust::Vec<uint8_t>& part_bytes,
+                                              const rust::Vec<uint8_t>& metadata_bytes,
                                               uint32_t column_index,
                                               uint32_t part_index) {
-  return btrWrapper::decompress_column_part<int32_t>(btr_path, column_index, part_index);
+  return btrWrapper::decompress_column_part<int32_t>(part_bytes, metadata_bytes, column_index,
+                                                     part_index);
 }
 
-rust::Vec<rust::String> decompress_column_string(rust::String btr_path, uint32_t column_index) {
-  return btrWrapper::decompress_column<rust::String>(btr_path, column_index);
+rust::Vec<rust::String> decompress_column_string(const rust::Vec<uint8_t>& column_part_bytes,
+                                                 const rust::Vec<size_t>& part_ending_indexes,
+                                                 uint32_t num_chunks) {
+  return btrWrapper::decompress_column<rust::String>(column_part_bytes, part_ending_indexes,
+                                                     num_chunks);
 }
 
-rust::Vec<rust::String> decompress_column_part_string(rust::String btr_path,
+rust::Vec<rust::String> decompress_column_part_string(const rust::Vec<uint8_t>& part_bytes,
+                                                      const rust::Vec<uint8_t>& metadata_bytes,
                                                       uint32_t column_index,
                                                       uint32_t part_index) {
-  return btrWrapper::decompress_column_part<rust::String>(btr_path, column_index, part_index);
+  return btrWrapper::decompress_column_part<rust::String>(part_bytes, metadata_bytes, column_index,
+                                                          part_index);
 }
 
-rust::Vec<double> decompress_column_f64(rust::String btr_path, uint32_t column_index) {
-  return btrWrapper::decompress_column<double>(btr_path, column_index);
+rust::Vec<double> decompress_column_f64(const rust::Vec<uint8_t>& column_part_bytes,
+                                        const rust::Vec<size_t>& part_ending_indexes,
+                                        uint32_t num_chunks) {
+  return btrWrapper::decompress_column<double>(column_part_bytes, part_ending_indexes, num_chunks);
 }
 
-rust::Vec<double> decompress_column_part_f64(rust::String btr_path,
+rust::Vec<double> decompress_column_part_f64(const rust::Vec<uint8_t>& part_bytes,
+                                             const rust::Vec<uint8_t>& metadata_bytes,
                                              uint32_t column_index,
                                              uint32_t part_index) {
-  return btrWrapper::decompress_column_part<double>(btr_path, column_index, part_index);
+  return btrWrapper::decompress_column_part<double>(part_bytes, metadata_bytes, column_index,
+                                                    part_index);
 }
 
 void csv_to_btr(rust::String csv_path,

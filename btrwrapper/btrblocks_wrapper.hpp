@@ -62,23 +62,29 @@ size_t stats_total_data_size(btrblocks::OutputBlockStats* stats);
 double stats_compression_ratio(btrblocks::OutputBlockStats* stats);
 
 // FileMetadata
-rust::Vec<uint32_t> get_file_metadata(rust::String btr_metadata_path);
+rust::Vec<uint32_t> get_file_metadata(const rust::Vec<uint8_t>& metadata_bytes);
 
 // Custom functions
-void decompress_column_into_file(rust::String btr_path,
-                                 uint32_t column_index,
-                                 rust::String output_path);
-rust::Vec<int32_t> decompress_column_i32(rust::String btr_path, uint32_t column_index);
-rust::Vec<rust::String> decompress_column_string(rust::String btr_path, uint32_t column_index);
-rust::Vec<double> decompress_column_f64(rust::String btr_path, uint32_t column_index);
+rust::Vec<int32_t> decompress_column_i32(const rust::Vec<uint8_t>& column_part_bytes,
+                                         const rust::Vec<size_t>& part_ending_indexes,
+                                         uint32_t num_chunks);
+rust::Vec<rust::String> decompress_column_string(const rust::Vec<uint8_t>& column_part_bytes,
+                                                 const rust::Vec<size_t>& part_ending_indexes,
+                                                 uint32_t num_chunks);
+rust::Vec<double> decompress_column_f64(const rust::Vec<uint8_t>& column_part_bytes,
+                                        const rust::Vec<size_t>& part_ending_indexes,
+                                        uint32_t num_chunks);
 
-rust::Vec<int32_t> decompress_column_part_i32(rust::String btr_path,
+rust::Vec<int32_t> decompress_column_part_i32(const rust::Vec<uint8_t>& part_bytes,
+                                              const rust::Vec<uint8_t>& metadata_bytes,
                                               uint32_t column_index,
                                               uint32_t part_index);
-rust::Vec<rust::String> decompress_column_part_string(rust::String btr_path,
+rust::Vec<rust::String> decompress_column_part_string(const rust::Vec<uint8_t>& part_bytes,
+                                                      const rust::Vec<uint8_t>& metadata_bytes,
                                                       uint32_t column_index,
                                                       uint32_t part_index);
-rust::Vec<double> decompress_column_part_f64(rust::String btr_path,
+rust::Vec<double> decompress_column_part_f64(const rust::Vec<uint8_t>& part_bytes,
+                                             const rust::Vec<uint8_t>& metadata_bytes,
                                              uint32_t column_index,
                                              uint32_t part_index);
 
