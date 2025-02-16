@@ -26,7 +26,7 @@ else()
 endif()
 
 # Add dependencies to ensure build order
-add_dependencies(btrwrapper btrblocks croaring tbb csv-parser)
+add_dependencies(btrwrapper btrblocks croaring)
 
 # Compiler options
 if (CMAKE_BUILD_TYPE MATCHES Debug)
@@ -38,8 +38,6 @@ target_compile_options(btrwrapper PUBLIC -Wno-unused-parameter)
 target_link_libraries(btrwrapper
     PUBLIC btrblocks
     PUBLIC croaring
-    PUBLIC tbb
-    PUBLIC csv-parser
 )
 
 target_include_directories(btrwrapper

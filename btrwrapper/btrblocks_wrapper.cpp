@@ -11,13 +11,15 @@
 #include "common/Utils.hpp"
 #include "compression/BtrReader.hpp"
 #include "scheme/SchemePool.hpp"
+#include "storage/Column.hpp"
 
 #include "cxx.h"
-#include "tbb/parallel_for.h"
-#include "tbb/task_scheduler_init.h"
 // ------------------------------------------------------------------------------
 namespace btrWrapper {
 using namespace btrblocks;
+
+const SplitStrategy split_strat = SplitStrategy::SEQUENTIAL;
+const uint32_t max_chunk_count = 9999;
 
 template <typename T>
 void chunk_to_vec(rust::Vec<T>& vec,
@@ -478,87 +480,177 @@ rust::Vec<double> decompress_column_part_f64(const rust::Vec<uint8_t>& part_byte
                                                     part_index);
 }
 
-void csv_to_btr(rust::String csv_path,
-                rust::String btr_path,
-                rust::String binary_path,
-                rust::Vec<rust::String> columns_metadata_raw) {
+template <typename T>
+uint32_t compress_column(rust::String btr_path,
+                         const rust::Vec<T>& data,
+                         uint32_t column_index,
+                         rust::String binary_path) {
   // This seems necessary to be
   SchemePool::refresh();
 
-  std::filesystem::path csv_path_fs = csv_path.c_str();
   std::filesystem::path btr_path_fs = btr_path.c_str();
   std::filesystem::path binary_path_fs = binary_path.c_str();
 
-  /*cout << "csv_fs:              " << csv_path_fs.string() <<  endl;*/
-  /*cout << "btr_path_fs:         " << btr_path_fs.string() << endl;*/
-  /*cout << "binary_path_fs:      " << binary_path_fs.string() << endl;*/
-
-  // Init TBB TODO: is that actually still necessary ?
-  tbb::task_scheduler_init init(8);
-
-  vector<ColumnMetadata> columns;
-  for (size_t i = 0; i < columns_metadata_raw.size(); i += 2) {
-    columns.push_back(
-        ColumnMetadata{columns_metadata_raw.at(i).data(), columns_metadata_raw.at(i + 1).data()});
-  }
-
-  // Load and parse CSV
-  std::ifstream csv(csv_path_fs);
-  if (!csv.good()) {
-    throw Generic_Exception("Unable to open specified csv file");
-  }
-
-  // parse writes the binary files
-  btrWrapper::convert_csv(csv_path_fs.string(), columns, binary_path_fs.string(), ",");
-
   // Create relation
-  Relation relation = btrWrapper::read_directory(columns, binary_path_fs.string());
-  /*relation.name = schema_yaml_path_fs.stem();*/
+  Relation relation;
+  relation.columns.reserve(1);
+
+  // Cosntruct the column to add it to the relation
+  if constexpr (std::is_same<T, int32_t>::value) {
+    auto* data_btr_vec = new Vector<int32_t>(data.size());
+    for (size_t i = 0; i < data.size(); ++i) {
+      (*data_btr_vec)[i] = data[i];
+    }
+    Column column("this_does_not_matter", std::move(*data_btr_vec));
+
+    relation.addColumn(std::move(column));
+  } else if constexpr (std::is_same<T, double>::value) {
+    auto* data_btr_vec = new Vector<double>(data.size());
+    for (size_t i = 0; i < data.size(); ++i) {
+      (*data_btr_vec)[i] = data[i];
+    }
+    Column column("this_does_not_matter", std::move(*data_btr_vec));
+
+    relation.addColumn(std::move(column));
+  } else {
+    // String compression...
+    //
+    // Unfortunately this does not seem to work, since I can not create a string_view Vector...
+    // So as an alternative use the other method of writing the data to disk and adding column from
+    // the file...
+    //
+    /*Vector<std::string_view> data_btr_vec(string_data.size());*/
+    /*auto* data_btr_vec = new Vector<str>(data.size());*/
+    /*for (size_t i = 0; i < data.size(); ++i) {*/
+    /*  (*data_btr_vec)[i] = data[i].c_str();*/
+    /*}*/
+    /*Column column("this_does_not_matter", std::move(*data_btr_vec));*/
+    /*relation.addColumn(std::move(column));*/
+
+    std::vector<std::string> string_data(data.begin(), data.end());
+    std::string str_col_name = "str_col";
+    string output_column_file =
+        binary_path_fs.string() + std::to_string(column_index) + "_" + str_col_name;
+
+    // Write Bitmap
+    string output_column_bitmap_file = output_column_file + ".bitmap";
+    std::vector<u8> all_true_bitmap(string_data.size(), 1);
+    writeBinary(output_column_bitmap_file.c_str(), all_true_bitmap);
+
+    // Write the literal data
+    output_column_file += ".string";
+    writeBinary(output_column_file.c_str(), string_data);
+
+    relation.addColumn(output_column_file);
+  }
 
   // Prepare datastructures for btr compression
-  auto ranges = relation.getRanges(SplitStrategy::SEQUENTIAL, 9999);
+  auto ranges = relation.getRanges(split_strat, max_chunk_count);
   assert(ranges.size() > 0);
   Datablock datablockV2(relation);
-  std::filesystem::create_directory(btr_path.c_str());
+  std::filesystem::create_directory(btr_path_fs);
 
-  // These counter are for statistics that match the harbook.
-  std::vector<std::atomic_size_t> sizes_uncompressed(relation.columns.size());
-  std::vector<std::atomic_size_t> sizes_compressed(relation.columns.size());
-  std::vector<u32> part_counters(relation.columns.size());
-  std::vector<ColumnType> types(relation.columns.size());
+  u32 part_counter = 0;
 
-  tbb::parallel_for(SIZE(0), relation.columns.size(), [&](SIZE column_i) {
-    types[column_i] = relation.columns[column_i].type;
+  std::vector<InputChunk> input_chunks;
+  std::string path_prefix =
+      btr_path_fs.string() + "/" + "column" + std::to_string(column_index) + "_part";
 
-    std::vector<InputChunk> input_chunks;
-    std::string path_prefix =
-        btr_path_fs.string() + "/" + "column" + std::to_string(column_i) + "_part";
-    ColumnPart part;
-    for (SIZE chunk_i = 0; chunk_i < ranges.size(); chunk_i++) {
-      auto input_chunk = relation.getInputChunk(ranges[chunk_i], chunk_i, column_i);
-      std::vector<u8> data = Datablock::compress(input_chunk);
-      sizes_uncompressed[column_i] += input_chunk.size;
+  ColumnPart part;
+  for (SIZE chunk_i = 0; chunk_i < ranges.size(); chunk_i++) {
+    auto input_chunk = relation.getInputChunk(ranges[chunk_i], chunk_i, 0);
+    std::vector<u8> data = Datablock::compress(input_chunk);
 
-      if (!part.canAdd(data.size())) {
-        std::string filename = path_prefix + std::to_string(part_counters[column_i]);
-        sizes_compressed[column_i] += part.writeToDisk(filename);
-        part_counters[column_i]++;
-        input_chunks.clear();
-      }
-
-      input_chunks.push_back(std::move(input_chunk));
-      part.addCompressedChunk(std::move(data));
-    }
-
-    if (!part.chunks.empty()) {
-      std::string filename = path_prefix + std::to_string(part_counters[column_i]);
-      sizes_compressed[column_i] += part.writeToDisk(filename);
-      part_counters[column_i]++;
+    if (!part.canAdd(data.size())) {
+      std::string filename = path_prefix + std::to_string(part_counter);
+      part.writeToDisk(filename);
+      part_counter++;
       input_chunks.clear();
     }
-  });
 
-  Datablock::writeMetadata(btr_path_fs.string() + "/metadata", types, part_counters, ranges.size());
+    input_chunks.push_back(std::move(input_chunk));
+    part.addCompressedChunk(std::move(data));
+  }
+
+  if (!part.chunks.empty()) {
+    std::string filename = path_prefix + std::to_string(part_counter);
+    part.writeToDisk(filename);
+    part_counter++;
+    input_chunks.clear();
+  }
+
+  return part_counter;
+}
+
+uint32_t compress_column_i32(rust::String btr_path,
+                             const rust::Vec<int32_t>& data,
+                             uint32_t column_index) {
+  return compress_column<int32_t>(btr_path, data, column_index, rust::String(""));
+}
+
+uint32_t compress_column_f64(rust::String btr_path,
+                             const rust::Vec<double>& data,
+                             uint32_t column_index) {
+  return compress_column<double>(btr_path, data, column_index, rust::String(""));
+}
+uint32_t compress_column_string(rust::String btr_path,
+                                const rust::Vec<rust::String>& data,
+                                uint32_t column_index,
+                                rust::String binary_path) {
+  return compress_column<rust::String>(btr_path, data, column_index, binary_path);
+}
+
+uint32_t get_num_chunks(uint64_t row_count) {
+  // -------------------------------------------------------------------------------------
+  auto& cfg = BtrBlocksConfig::get();
+  // -------------------------------------------------------------------------------------
+  // Build all possible ranges
+  vector<tuple<u64, u64>> ranges;  // (start_index, length)
+  for (u64 offset = 0; offset < row_count; offset += cfg.block_size) {
+    // -------------------------------------------------------------------------------------
+    u64 chunk_tuple_count;
+    if (offset + cfg.block_size >= row_count) {
+      chunk_tuple_count = row_count - offset;
+    } else {
+      chunk_tuple_count = cfg.block_size;
+    }
+    ranges.emplace_back(offset, chunk_tuple_count);
+  }
+  // -------------------------------------------------------------------------------------
+  if (split_strat == SplitStrategy::RANDOM) {
+    std::shuffle(ranges.begin(), ranges.end(), std::mt19937(std::random_device()()));
+  }
+  // -------------------------------------------------------------------------------------
+  if (max_chunk_count) {
+    ranges.resize(std::min(static_cast<SIZE>(max_chunk_count), ranges.size()));
+  }
+  return ranges.size();
+}
+
+rust::Vec<uint8_t> get_file_metadata_bytes(uint32_t num_columns,
+                                           uint32_t num_chunks,
+                                           rust::Vec<uint32_t> parts) {
+  rust::Vec<uint8_t> bytes;
+
+  FileMetadata metadata{.num_columns = num_columns, .num_chunks = num_chunks};
+
+  const char* metadata_bytes = reinterpret_cast<const char*>(&metadata);
+  for (size_t i = 0; i < sizeof(metadata_bytes); i++) {
+    bytes.push_back(metadata_bytes[i]);
+  }
+
+  for (u32 column = 0; column < num_columns; column++) {
+    ColumnPartInfo info{.type = static_cast<ColumnType>(static_cast<u8>(parts[column * 2])),
+                        .num_parts = static_cast<u32>(parts[(column * 2) + 1])};
+
+    const char* info_bytes = reinterpret_cast<const char*>(&info);
+
+    for (size_t i = 0; i < sizeof(info_bytes); i++) {
+      bytes.push_back(info_bytes[i]);
+    }
+  }
+
+  return bytes;
 }
 
 }  // namespace btrWrapper

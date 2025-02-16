@@ -88,10 +88,20 @@ rust::Vec<double> decompress_column_part_f64(const rust::Vec<uint8_t>& part_byte
                                              uint32_t column_index,
                                              uint32_t part_index);
 
-void csv_to_btr(rust::String csv_path,
-                rust::String btr_path,
-                rust::String binary_path,
-                rust::Vec<rust::String> columns_metadata_raw);
+uint32_t compress_column_i32(rust::String btr_path,
+                             const rust::Vec<int32_t>& data,
+                             uint32_t column_index);
+uint32_t compress_column_f64(rust::String btr_path,
+                             const rust::Vec<double>& data,
+                             uint32_t column_index);
+uint32_t compress_column_string(rust::String btr_path,
+                                const rust::Vec<rust::String>& data,
+                                uint32_t column_index,
+                                rust::String binary_path);
+uint32_t get_num_chunks(uint64_t row_count);
+rust::Vec<uint8_t> get_file_metadata_bytes(uint32_t num_columns,
+                                           uint32_t num_chunks,
+                                           rust::Vec<uint32_t> parts);
 
 }  // namespace btrWrapper
 
